@@ -169,7 +169,7 @@ public:
     {
         TntStreamPtr packed_args = pack_buffer(args);
 
-        return (evalualte_impl(lua_statement, packed_args));
+        return (evaluate_impl(lua_statement, packed_args));
     }
 
 private:
@@ -200,7 +200,7 @@ private:
     SEXP update_impl(SEXP space, TntStreamPtr &tuple, uint32_t index, TntStreamPtr &ops);
     SEXP upsert_impl(SEXP space, TntStreamPtr &tuple, TntStreamPtr &ops);
     SEXP call_impl(const std::string &func, TntStreamPtr &args);
-    SEXP evalualte_impl(const std::string &lua_statement, TntStreamPtr &args);
+    SEXP evaluate_impl(const std::string &lua_statement, TntStreamPtr &args);
 };
 
 void Tarantool::pack_elem(Rcpp::List::iterator &it, msgpack::packer<msgpack::sbuffer> &pk)
@@ -501,7 +501,7 @@ SEXP Tarantool::call_impl(const std::string &func, TntStreamPtr &args)
     return (result);
 }
 
-SEXP Tarantool::evalualte_impl(const std::string &lua_statement, TntStreamPtr &args)
+SEXP Tarantool::evaluate_impl(const std::string &lua_statement, TntStreamPtr &args)
 {
     auto rc = tnt_eval(stream.get(), lua_statement.c_str(), lua_statement.size(), args.get());
     check_tnt_api_rc(rc, "tnt_eval()");

@@ -1,5 +1,5 @@
 ## Tarantoolr
-R driver for Tarantool 1.6+.
+R driver for [Tarantool](https://github.com/tarantool/tarantool) 1.6+.
 
 ## Install
 As for now `tarantoolr` package can only be installed directly from GitHub using `devtools` package.

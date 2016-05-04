@@ -20,8 +20,24 @@ test_that("insert method works", {
 
     expect_that(tnt$insert("test", list(1L, NULL, NULL)), throws_error())
 
+    system("tarantoolctl eval example cleanup.lua")
+})
+
+test_that("insert method fails on unsupported R's data types", {
+    system("tarantoolctl eval example cleanup.lua")
+    system("tarantoolctl eval example init.lua")
+
+    tnt <- new(Tarantool)
+    expect_that(tnt$ping(), is_true())
+
     # We don't (yet) support factors' serialization
     testthat::expect_error(tnt$insert("test", list(2000L, sapply(list("a", "b"), as.factor))))
+
+    # don't support functions
+    f <- function(x) {
+        return (x*x)
+    }
+    testthat::expect_error(tnt$insert("test", list(2000L, f)))
 
     system("tarantoolctl eval example cleanup.lua")
 })

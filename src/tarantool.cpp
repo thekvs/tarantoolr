@@ -191,6 +191,7 @@ private:
     TntStreamPtr pack_buffer(SEXP tpl);
     TntStreamPtr pack_update_arg(SEXP tpl);
     void check_tnt_api_rc(int rc, const char *function_name);
+    std::string sexp_type_name(SEXP x);
 
     SEXP ping_impl();
     SEXP insert_impl(SEXP space, TntStreamPtr &tuple);
@@ -246,7 +247,7 @@ void Tarantool::pack_elem(Rcpp::List::iterator &it, msgpack::packer<msgpack::sbu
     default: {
         // See https://github.com/wch/r-source/blob/e5b21d0397c607883ff25cca379687b86933d730/src/include/Rinternals.h
         // for more details about R's internal data types
-        Rcpp::stop("unsupported data type, id=%i", TYPEOF(*it));
+        Rcpp::stop("unsupported R's data type: %s", sexp_type_name(*it).c_str());
     }
     } // switch
 }
@@ -739,6 +740,62 @@ TntStreamPtr Tarantool::pack_update_arg(SEXP e)
     }
 
     return (TntStreamPtr(tnt_object_as(NULL, const_cast<char *>(update_op_buff.data()), update_op_buff.size())));
+}
+
+std::string Tarantool::sexp_type_name(SEXP x)
+{
+    switch (TYPEOF(x)) {
+    case NILSXP:
+        return "NILSXP";
+    case SYMSXP:
+        return "SYMSXP";
+    case LISTSXP:
+        return "LISTSXP";
+    case CLOSXP:
+        return "CLOSXP";
+    case ENVSXP:
+        return "ENVSXP";
+    case PROMSXP:
+        return "PROMSXP";
+    case LANGSXP:
+        return "LANGSXP";
+    case SPECIALSXP:
+        return "SPECIALSXP";
+    case BUILTINSXP:
+        return "BUILTINSXP";
+    case CHARSXP:
+        return "CHARSXP";
+    case LGLSXP:
+        return "LGLSXP";
+    case INTSXP:
+        return "INTSXP";
+    case REALSXP:
+        return "REALSXP";
+    case CPLXSXP:
+        return "CPLXSXP";
+    case STRSXP:
+        return "STRSXP";
+    case DOTSXP:
+        return "DOTSXP";
+    case ANYSXP:
+        return "ANYSXP";
+    case VECSXP:
+        return "VECSXP";
+    case EXPRSXP:
+        return "EXPRSXP";
+    case BCODESXP:
+        return "BCODESXP";
+    case EXTPTRSXP:
+        return "EXTPTRSXP";
+    case WEAKREFSXP:
+        return "WEAKREFSXP";
+    case S4SXP:
+        return "S4SXP";
+    case RAWSXP:
+        return "RAWSXP";
+    default:
+        return "<unknown>";
+    }
 }
 
 RCPP_MODULE(Tarantool)

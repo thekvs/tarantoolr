@@ -192,6 +192,7 @@ private:
     TntStreamPtr pack_update_arg(SEXP tpl);
     void check_tnt_api_rc(int rc, const char *function_name);
     std::string sexp_type_name(SEXP x);
+    std::string msgpack_type_name(int type);
 
     SEXP ping_impl();
     SEXP insert_impl(SEXP space, TntStreamPtr &tuple);
@@ -271,7 +272,7 @@ void Tarantool::unpack_msgpack_object(const msgpack::object &obj, Rcpp::List &l)
     } else if (obj.type == msgpack::type::BOOLEAN) {
         l.push_back(obj.as<bool>());
     } else {
-        Rcpp::stop("unsupported msgpack object: %i", obj.type);
+        Rcpp::stop("unsupported msgpack object: %s", msgpack_type_name(obj.type).c_str());
     }
 }
 
@@ -793,6 +794,34 @@ std::string Tarantool::sexp_type_name(SEXP x)
         return "S4SXP";
     case RAWSXP:
         return "RAWSXP";
+    default:
+        return "<unknown>";
+    }
+}
+
+std::string Tarantool::msgpack_type_name(int type)
+{
+    switch (type) {
+    case msgpack::type::NIL:
+        return "NIL";
+    case msgpack::type::BOOLEAN:
+        return "BOOLEAN";
+    case msgpack::type::POSITIVE_INTEGER:
+        return "POSITIVE_INTEGER";
+    case msgpack::type::NEGATIVE_INTEGER:
+        return "NEGATIVE_INTEGER";
+    case msgpack::type::FLOAT:
+        return "FLOAT";
+    case msgpack::type::STR:
+        return "STR";
+    case msgpack::type::BIN:
+        return "BIN";
+    case msgpack::type::ARRAY:
+        return "ARRAY";
+    case msgpack::type::MAP:
+        return "MAP";
+    case msgpack::type::EXT:
+        return "EXT";
     default:
         return "<unknown>";
     }

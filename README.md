@@ -11,4 +11,37 @@ devtools::install_github('thekvs/tarantoolr')
 ```
 
 ## Usage
-Some usage examples can be found in [tests](tests/testthat) directory.
+Obligatory "Hello, World!" example:
+```
+> library(tarantoolr)
+> tnt <- new(Tarantool)
+> res1 <- tnt$insert("example", list(2016L, 3.14, TRUE, FALSE, NULL, list("x", "y", "z")))
+> res2 <- tnt$select("example", 2016L, NULL)
+> str(res1)
+List of 1
+ $ :List of 6
+  ..$ : num 2016
+  ..$ : num 3.14
+  ..$ : logi TRUE
+  ..$ : logi FALSE
+  ..$ : NULL
+  ..$ :List of 3
+  .. ..$ : chr "x"
+  .. ..$ : chr "y"
+  .. ..$ : chr "z"
+> str(res2)
+List of 1
+ $ :List of 6
+  ..$ : num 2016
+  ..$ : num 3.14
+  ..$ : logi TRUE
+  ..$ : logi FALSE
+  ..$ : NULL
+  ..$ :List of 3
+  .. ..$ : chr "x"
+  .. ..$ : chr "y"
+  .. ..$ : chr "z"
+>
+```
+
+Some other usage examples can be found in [tests](tests/testthat) directory.

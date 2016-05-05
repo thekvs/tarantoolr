@@ -19,9 +19,9 @@ r_packages:
 
 before_install:
         - curl http://download.tarantool.org/tarantool/1.6/gpgkey | sudo apt-key add -
-        - sudo echo "deb http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" > /etc/apt/sources.list.d/tarantool_1_6.list
-        - sudo echo "deb-src http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" >> /etc/apt/sources.list.d/tarantool_1_6.list
-        - sudo apt-get update
+        - echo "deb http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" | sudo tee -a /etc/apt/sources.list
+        - echo "deb-src http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" | sudo tee -a /etc/apt/sources.list
+        - sudo apt-get update -qq
         - sudo apt-get -y install tarantool
         - sudo service tarantool stop
         - sudo ln -s /etc/tarantool/instances.available/example.lua /etc/tarantool/instances.enabled/example.lua

@@ -6,14 +6,16 @@ Author: Konstantin Sorokin
 Maintainer: Konstantin Sorokin <kvs@sigterm.ru>
 Description: R interface to Tarantool database.
 SystemRequirements: C++11
-License: GPL (>= 2) | file LICENSE
+License: GPL (>= 2)
 URL: https://github.com/thekvs/tarantoolr
 BugReports: https://github.com/thekvs/tarantoolr/issues
 LazyData: TRUE
+LinkingTo: Rcpp
 Depends:
     Rcpp (>= 0.12.4)
-LinkingTo: Rcpp
 Suggests:
     testthat,
     RApiSerialize
-RoxygenNote: 5.0.1
+Imports:
+    methods,
+    Rcpp (>= 0.12.4)

@@ -83,7 +83,7 @@ public:
         return (replace_impl(space, packed_tuple));
     }
 
-    SEXP select(SEXP space, SEXP key, const Rcpp::List &params)
+    SEXP select(SEXP space, SEXP key, const Rcpp::List params)
     {
         TntStreamPtr packed_key = pack_buffer(key);
 
@@ -111,7 +111,7 @@ public:
         return (select_impl(space, packed_key, index, limit, offset, iterator));
     }
 
-    SEXP delete_(SEXP space, SEXP key, const Rcpp::List &params)
+    SEXP delete_(SEXP space, SEXP key, const Rcpp::List params)
     {
         TntStreamPtr packed_key = pack_buffer(key);
 
@@ -124,7 +124,7 @@ public:
         return (delete_impl(space, packed_key, index));
     }
 
-    SEXP update(SEXP space, SEXP tpl, const Rcpp::List &params)
+    SEXP update(SEXP space, SEXP tpl, const Rcpp::List params)
     {
         TntStreamPtr packed_tuple = pack_buffer(tpl);
 
@@ -144,7 +144,7 @@ public:
         return (update_impl(space, packed_tuple, index, packed_ops));
     }
 
-    SEXP upsert(SEXP space, SEXP tpl, const Rcpp::List &params)
+    SEXP upsert(SEXP space, SEXP tpl, const Rcpp::List params)
     {
         TntStreamPtr packed_tuple = pack_buffer(tpl);
 

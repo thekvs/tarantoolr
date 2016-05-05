@@ -2719,8 +2719,7 @@ $(cd src/3dparty/; \
 	mkdir -p build/msgpack; \
 	cd build/msgpack; \
 	cmake ../../msgpack-1.4.1/ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$(pwd)/../../install" -DMSGPACK_CXX11=ON; \
-	# make > /dev/null 2>&1; \
-	make; \
+	make > /dev/null 2>&1; \
 	make install > /dev/null 2>&1;)
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: Finished building msgpack library" >&5
@@ -2730,7 +2729,7 @@ COMMON_INCL="-I$(pwd)/src/3dparty/install/include"
 
 PKG_CFLAGS="${PKG_CFLAGS} ${COMMON_INCL} $tarantool_cflags"
 
-PKG_CXXFLAGS="${PKG_CXXFLAGS} -Wall -Wextra ${COMMON_INCL} $tarantool_cflags"
+PKG_CXXFLAGS="${PKG_CXXFLAGS} -W -Wextra ${COMMON_INCL} $tarantool_cflags"
 
 PKG_LIBS="${PKG_LIBS} $tarantool_libs"
 

@@ -57,7 +57,7 @@ AC_MSG_NOTICE([Finished building msgpack library])
 COMMON_INCL="-I$(pwd)/src/3dparty/install/include"
 
 AC_SUBST([PKG_CFLAGS],["${PKG_CFLAGS} ${COMMON_INCL} $tarantool_cflags"])
-AC_SUBST([PKG_CXXFLAGS],["${PKG_CXXFLAGS} -Wall -Wextra ${COMMON_INCL} $tarantool_cflags"])
+AC_SUBST([PKG_CXXFLAGS],["${PKG_CXXFLAGS} -W -Wextra ${COMMON_INCL} $tarantool_cflags"])
 AC_SUBST([PKG_LIBS],["${PKG_LIBS} $tarantool_libs"])
 AC_CONFIG_FILES([src/Makevars])
 AC_OUTPUT

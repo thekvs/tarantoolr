@@ -34,3 +34,4 @@ List of 1
 ```
 
 Some other usage examples can be found in [tests](tests/testthat) directory.
+

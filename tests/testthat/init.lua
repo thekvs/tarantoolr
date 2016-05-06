@@ -1,7 +1,7 @@
 box.schema.space.create("test", {temporary = true})
 box.space.test:create_index('primary', { type = 'tree', parts = { 1, 'num' }})
 
-local function add_two_numbers(a, b)
+function add_two_numbers(a, b)
 	return a + b
 end
 

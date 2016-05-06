@@ -8,11 +8,6 @@ r:
 
 warnings_are_errors: false
 
-apt_packages:
-        - cmake
-        - gcc
-        - g++
-
 r_packages:
         - Rcpp
         - testthat

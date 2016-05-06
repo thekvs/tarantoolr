@@ -1,4 +1,4 @@
-## Tarantoolr
+## Tarantoolr [![Build Status](https://travis-ci.org/thekvs/tarantoolr.svg?branch=master)](https://travis-ci.org/thekvs/tarantoolr)
 R driver for [Tarantool](https://github.com/tarantool/tarantool) 1.6+ in-memory database and application server.
 
 ## Install

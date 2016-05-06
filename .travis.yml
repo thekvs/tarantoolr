@@ -27,4 +27,5 @@ before_install:
         - sudo service tarantool stop
         - sudo ln -s /etc/tarantool/instances.available/example.lua /etc/tarantool/instances.enabled/example.lua
         - sudo service tarantool start
+        - sudo chmod a+rx /var/run/tarantool
         - sudo chmod a+w /var/run/tarantool/example.control

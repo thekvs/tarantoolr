@@ -41,3 +41,32 @@ test_that("insert method fails on unsupported R's data types", {
 
     system("tarantoolctl eval example cleanup.lua")
 })
+
+test_that("insert method works with two indexes", {
+    system("tarantoolctl eval example cleanup.lua")
+    system("tarantoolctl eval example init.lua")
+
+    tnt <- new(Tarantool)
+    testthat::expect_true(tnt$ping())
+
+    res <- tnt$insert("test2", list(1L, "AA", T, F, list("a", 1L, 1.0, list(1, 2, list("a", "b"), 3))))
+    testthat::expect_equal(res[[1]], list(1L, "AA", TRUE, FALSE, list("a", 1L, 1.0, list(1, 2, list("a", "b"), 3))))
+
+    res <- tnt$insert("test2", list(2L, "AA", 3.14))
+    testthat::expect_equal(res[[1]], list(2L, "AA", 3.14))
+
+    system("tarantoolctl eval example cleanup.lua")
+})
+
+test_that("insert method fails on data which doesn't fit index", {
+    system("tarantoolctl eval example cleanup.lua")
+    system("tarantoolctl eval example init.lua")
+
+    tnt <- new(Tarantool)
+    expect_that(tnt$ping(), is_true())
+
+    # "test2" namespace has two indexes and the second one is on STR data type
+    testthat::expect_error(tnt$insert("test2", list(2000L, 20)))
+
+    system("tarantoolctl eval example cleanup.lua")
+})

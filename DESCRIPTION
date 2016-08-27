@@ -1,7 +1,7 @@
 Package: tarantoolr
 Type: Package
 Title: Tarantool Database Client
-Version: 0.0.1
+Version: 0.1.0
 Author: Konstantin Sorokin
 Maintainer: Konstantin Sorokin <kvs@sigterm.ru>
 Description: R interface to Tarantool database.

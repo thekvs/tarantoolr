@@ -2696,7 +2696,7 @@ TARANTOOL_CXXCPP=$("${R_HOME}/bin/R" CMD config CXXCPP)
 { $as_echo "$as_me:${as_lineno-$LINENO}: Starting to build tarantool-c library" >&5
 $as_echo "$as_me: Starting to build tarantool-c library" >&6;}
 
-$(cd src/third_party/; \
+$(cd third_party/; \
 	mkdir -p build/libtarantool; \
 	cd build/libtarantool; \
 	cmake ../../tarantool-c/ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$(pwd)/../../install" -DCMAKE_C_FLAGS="${TARANTOOL_CFLAGS}" -DCMAKE_CXX_FLAGS="${TARANTOOL_CXXFLAGS}"; \
@@ -2706,8 +2706,8 @@ $(cd src/third_party/; \
 { $as_echo "$as_me:${as_lineno-$LINENO}: Finished building tarantool-c library" >&5
 $as_echo "$as_me: Finished building tarantool-c library" >&6;}
 
-TARANTOOL_LIBS="$(pwd)/src/third_party/install/lib/libtarantool.a"
-TARANTOOL_INCL="-I$(pwd)/src/third_party/tarantool-c/third_party/msgpuck"
+TARANTOOL_LIBS="$(pwd)/third_party/install/lib/libtarantool.a"
+TARANTOOL_INCL="-I$(pwd)/third_party/tarantool-c/third_party/msgpuck"
 
 tarantool_cflags="${TARANTOOL_INCL}"
 tarantool_libs="${TARANTOOL_LIBS}"
@@ -2715,7 +2715,7 @@ tarantool_libs="${TARANTOOL_LIBS}"
 { $as_echo "$as_me:${as_lineno-$LINENO}: Starting to build msgpack library" >&5
 $as_echo "$as_me: Starting to build msgpack library" >&6;}
 
-$(cd src/third_party/; \
+$(cd third_party/; \
 	mkdir -p build/msgpack; \
 	cd build/msgpack; \
 	cmake ../../msgpack-1.4.1/ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$(pwd)/../../install" -DMSGPACK_CXX11=ON; \
@@ -2725,7 +2725,7 @@ $(cd src/third_party/; \
 { $as_echo "$as_me:${as_lineno-$LINENO}: Finished building msgpack library" >&5
 $as_echo "$as_me: Finished building msgpack library" >&6;}
 
-COMMON_INCL="-I$(pwd)/src/third_party/install/include"
+COMMON_INCL="-I$(pwd)/third_party/install/include"
 
 PKG_CFLAGS="${PKG_CFLAGS} ${COMMON_INCL} $tarantool_cflags"
 

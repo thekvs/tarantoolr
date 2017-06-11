@@ -17,7 +17,7 @@ before_install:
         - sudo apt-get update
         - sudo apt-get -y install tarantool
         - sudo service tarantool stop
-        - sudo ln -s /etc/tarantool/instances.available/example.lua /etc/tarantool/instances.enabled/example.lua
+        # - sudo ln -s /etc/tarantool/instances.available/example.lua /etc/tarantool/instances.enabled/example.lua
         - sudo service tarantool start
         - sleep 2
         - sudo chmod a+rx /var/run/tarantool

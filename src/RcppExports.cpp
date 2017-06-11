@@ -14,3 +14,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+
+RcppExport SEXP _rcpp_module_boot_Tarantool();
+
+static const R_CallMethodDef CallEntries[] = {
+    {"tarantoolr_exportTarantoolConstants", (DL_FUNC) &tarantoolr_exportTarantoolConstants, 0},
+    {"_rcpp_module_boot_Tarantool", (DL_FUNC) &_rcpp_module_boot_Tarantool, 0},
+    {NULL, NULL, 0}
+};
+
+RcppExport void R_init_tarantoolr(DllInfo *dll) {
+    R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+    R_useDynamicSymbols(dll, FALSE);
+}

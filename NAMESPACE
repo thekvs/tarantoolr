@@ -1,3 +1,4 @@
+import(Rcpp)
 exportPattern("^[[:alpha:]]+")
 importFrom(Rcpp, evalCpp)
 useDynLib(tarantoolr)

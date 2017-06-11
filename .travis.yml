@@ -11,13 +11,13 @@ r_packages:
         - RApiSerialize
 
 before_install:
-        - curl http://download.tarantool.org/tarantool/1.7/gpgkey | sudo apt-key add -
-        - echo "deb http://download.tarantool.org/tarantool/1.7/ubuntu/ $(lsb_release -c -s) main" | sudo tee -a /etc/apt/sources.list
-        - echo "deb-src http://download.tarantool.org/tarantool/1.7/ubuntu/ $(lsb_release -c -s) main" | sudo tee -a /etc/apt/sources.list
+        - curl http://download.tarantool.org/tarantool/1.6/gpgkey | sudo apt-key add -
+        - echo "deb http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" | sudo tee -a /etc/apt/sources.list
+        - echo "deb-src http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" | sudo tee -a /etc/apt/sources.list
         - sudo apt-get update
         - sudo apt-get -y install tarantool
         - sudo service tarantool stop
-        # - sudo ln -s /etc/tarantool/instances.available/example.lua /etc/tarantool/instances.enabled/example.lua
+        - sudo ln -s /etc/tarantool/instances.available/example.lua /etc/tarantool/instances.enabled/example.lua
         - sudo service tarantool start
         - sleep 2
         - sudo chmod a+rx /var/run/tarantool

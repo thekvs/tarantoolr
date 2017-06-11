@@ -7,6 +7,8 @@ src/*.so
 src/*.dll
 src/3dparty/build/
 src/3dparty/install/
+src/third_party/build/
+src/third_party/install/
 src/Makevars
 autom4te.cache
 config.log

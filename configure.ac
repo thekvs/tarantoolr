@@ -31,7 +31,7 @@ TARANTOOL_CXXCPP=$("${R_HOME}/bin/R" CMD config CXXCPP)
 
 AC_MSG_NOTICE([Starting to build tarantool-c library])
 
-$(cd third_party/; \
+$(cd src/third_party/; \
 	mkdir -p build/libtarantool; \
 	cd build/libtarantool; \
 	cmake ../../tarantool-c/ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$(pwd)/../../install" -DCMAKE_C_FLAGS="${TARANTOOL_CFLAGS}" -DCMAKE_CXX_FLAGS="${TARANTOOL_CXXFLAGS}"; \
@@ -40,15 +40,15 @@ $(cd third_party/; \
 
 AC_MSG_NOTICE([Finished building tarantool-c library])
 
-TARANTOOL_LIBS="$(pwd)/third_party/install/lib/libtarantool.a"
-TARANTOOL_INCL="-I$(pwd)/third_party/tarantool-c/third_party/msgpuck"
+TARANTOOL_LIBS="$(pwd)/src/third_party/install/lib/libtarantool.a"
+TARANTOOL_INCL="-I$(pwd)/src/third_party/tarantool-c/third_party/msgpuck"
 
 tarantool_cflags="${TARANTOOL_INCL}"
 tarantool_libs="${TARANTOOL_LIBS}"
 
 AC_MSG_NOTICE([Starting to build msgpack library])
 
-$(cd third_party/; \
+$(cd src/third_party/; \
 	mkdir -p build/msgpack; \
 	cd build/msgpack; \
 	cmake ../../msgpack-1.4.1/ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$(pwd)/../../install" -DMSGPACK_CXX11=ON; \
@@ -57,7 +57,7 @@ $(cd third_party/; \
 
 AC_MSG_NOTICE([Finished building msgpack library])
 
-COMMON_INCL="-I$(pwd)/third_party/install/include"
+COMMON_INCL="-I$(pwd)/src/third_party/install/include"
 
 AC_SUBST([PKG_CFLAGS],["${PKG_CFLAGS} ${COMMON_INCL} $tarantool_cflags"])
 AC_SUBST([PKG_CXXFLAGS],["${PKG_CXXFLAGS} -W -Wextra ${COMMON_INCL} $tarantool_cflags"])

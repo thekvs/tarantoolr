@@ -5,6 +5,8 @@ Version: 0.1.0
 Author: Konstantin Sorokin
 Maintainer: Konstantin Sorokin <kvs@sigterm.ru>
 Description: R interface to Tarantool database.
+    Tarantool is an in-memory database and application server.
+    See <http://tarantool.org/> for more information.
 SystemRequirements: C++11, cmake (>= 2.8.9)
 License: GPL (>= 2)
 URL: https://github.com/thekvs/tarantoolr

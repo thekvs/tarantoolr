@@ -35,9 +35,11 @@
  * \brief Request creation using connection schema
  */
 
+#include <tarantool/tnt_proto.h>
+
 struct tnt_request {
 	struct {
-		uint32_t sync; /*!< Request sync id. Generated when encoded */
+		uint64_t sync; /*!< Request sync id. Generated when encoded */
 		enum tnt_request_t type; /*!< Request type */
 	} hdr; /*!< fields for header */
 	uint32_t space_id; /*!< Space number */
@@ -276,12 +278,25 @@ tnt_request_set_ops(struct tnt_request *req, struct tnt_stream *s);
  * \param s   stream pointer
  * \param req request pointer
  *
- * \retval 0  ok
+ * \retval >0 ok, sync is returned
  * \retval -1 out of memory
  */
 int64_t
 tnt_request_compile(struct tnt_stream *s, struct tnt_request *req);
 
+/**
+ * \brief Encode request to stream object.
+ *
+ * \param[in]  s    stream pointer
+ * \param[in]  req  request pointer
+ * \param[out] sync pointer to compiled request
+ *
+ * \retval 0  ok
+ * \retval -1 out of memory
+ */
+int
+tnt_request_writeout(struct tnt_stream *s, struct tnt_request *req,
+		     uint64_t *sync);
 /**
  * \brief create select request object
  * \sa tnt_request_init
@@ -323,6 +338,13 @@ tnt_request_delete(struct tnt_request *req);
  */
 struct tnt_request *
 tnt_request_call(struct tnt_request *req);
+
+/**
+ * \brief create call request object
+ * \sa tnt_request_init
+ */
+struct tnt_request *
+tnt_request_call_16(struct tnt_request *req);
 
 /**
  * \brief create auth request object

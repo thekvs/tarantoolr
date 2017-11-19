@@ -1,8 +1,8 @@
 // [[Rcpp::plugins(cpp11)]]
 
 #include <memory>
-#include <string>
 #include <sstream>
+#include <string>
 
 #include <Rcpp.h>
 
@@ -30,7 +30,7 @@ public:
     void operator()(TntReply *r)
     {
         tnt_reply_free(r);
-        free(r);
+        // free(r);
     }
 };
 

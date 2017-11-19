@@ -5,7 +5,7 @@ test_that("call method works", {
     tnt <- new(Tarantool)
     testthat::expect_true(tnt$ping())
 
-    res <- tnt$call("box.info", NULL)
+    res <- tnt$call("box.session.user", NULL)
     testthat::expect_true(is.list(res))
     testthat::expect_gt(length(res), 0)
 

@@ -62,19 +62,17 @@ tnt_sbuf_object_resize(struct tnt_stream *s, size_t size) {
 struct tnt_stream *
 tnt_object(struct tnt_stream *s)
 {
-	int allocated = s == NULL;
-	s = tnt_buf(s);
-	struct tnt_stream_buf *sb = NULL;
-	struct tnt_sbuf_object *sbo = NULL;
-	if (s == NULL)
+	if ((s = tnt_buf(s)) == NULL)
 		goto error;
-	sb = TNT_SBUF_CAST(s);
-	sb->subdata = tnt_mem_alloc(sizeof(struct tnt_sbuf_object));
+
+	struct tnt_stream_buf *sb = TNT_SBUF_CAST(s);
 	sb->resize = tnt_sbuf_object_resize;
 	sb->free = tnt_sbuf_object_free;
-	if (sb->subdata == NULL)
+
+	struct tnt_sbuf_object *sbo = tnt_mem_alloc(sizeof(struct tnt_sbuf_object));
+	if (sbo == NULL)
 		goto error;
-	sbo = TNT_OBJ_CAST(sb);
+	sb->subdata = sbo;
 	sbo->stack_size = 0;
 	sbo->stack_alloc = 8;
 	sbo->stack = tnt_mem_alloc(sbo->stack_alloc *
@@ -82,10 +80,10 @@ tnt_object(struct tnt_stream *s)
 	if (sbo->stack == NULL)
 		goto error;
 	tnt_object_type(s, TNT_SBO_SIMPLE);
+
 	return s;
 error:
-	if (s && allocated)
-		tnt_stream_free(s);
+	tnt_stream_free(s);
 	return NULL;
 }
 
@@ -96,6 +94,17 @@ tnt_object_add_nil (struct tnt_stream *s)
 	if (sbo->stack_size > 0)
 		sbo->stack[sbo->stack_size - 1].size += 1;
 	char data[2]; char *end = mp_encode_nil(data);
+	return s->write(s, data, end - data);
+}
+
+ssize_t
+tnt_object_add_uint(struct tnt_stream *s, uint64_t value)
+{
+	struct tnt_sbuf_object *sbo = TNT_SOBJ_CAST(s);
+	if (sbo->stack_size > 0)
+		sbo->stack[sbo->stack_size - 1].size += 1;
+	char data[10], *end;
+	end = mp_encode_uint(data, value);
 	return s->write(s, data, end - data);
 }
 
@@ -278,12 +287,13 @@ tnt_object_container_close (struct tnt_stream *s)
 	} else if (sbo->type == TNT_SBO_PACKED) {
 		size_t sz = 0;
 		if (type == MP_MAP)
-			sz = mp_sizeof_map(size);
+			sz = mp_sizeof_map(size/2);
 		else
 			sz = mp_sizeof_array(size);
 		if (sz > 1) {
 			if (!sb->resize(s, sz - 1))
 				return -1;
+			lenp = sb->data + offset;
 			memmove(lenp + sz, lenp + 1, sb->size - offset - 1);
 		}
 		if (type == MP_MAP) {
@@ -322,7 +332,7 @@ ssize_t tnt_object_vformat(struct tnt_stream *s, const char *fmt, va_list vl)
 			if ((rv = tnt_object_add_map(s, 0)) == -1)
 				return -1;
 			result += rv;
-		} if (f[0] == ']' || f[0] == '}') {
+		} else if (f[0] == ']' || f[0] == '}') {
 			if ((rv = tnt_object_container_close(s)) == -1)
 				return -1;
 			result += rv;
@@ -351,18 +361,18 @@ ssize_t tnt_object_vformat(struct tnt_stream *s, const char *fmt, va_list vl)
 					return -1;
 				result += rv;
 				f += 2;
-			} else if(f[0] == 'f') {
+			} else if (f[0] == 'f') {
 				float v = (float)va_arg(vl, double);
 				if ((rv = tnt_object_add_float(s, v)) == -1)
 					return -1;
 				result += rv;
-			} else if(f[0] == 'l' && f[1] == 'f') {
+			} else if (f[0] == 'l' && f[1] == 'f') {
 				double v = va_arg(vl, double);
 				if ((rv = tnt_object_add_double(s, v)) == -1)
 					return -1;
 				result += rv;
 				f++;
-			} else if(f[0] == 'b') {
+			} else if (f[0] == 'b') {
 				bool v = (bool)va_arg(vl, int);
 				if ((rv = tnt_object_add_bool(s, v)) == -1)
 					return -1;

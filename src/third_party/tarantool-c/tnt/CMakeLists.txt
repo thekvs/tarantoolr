@@ -38,11 +38,10 @@ set (TNT_SOURCES
      ${CMAKE_CURRENT_SOURCE_DIR}/tnt_io.c
      ${CMAKE_CURRENT_SOURCE_DIR}/tnt_opt.c
      ${CMAKE_CURRENT_SOURCE_DIR}/tnt_net.c
-     ${CMAKE_SOURCE_DIR}/third_party/uri.c
-     ${CMAKE_SOURCE_DIR}/third_party/sha1.c
-     ${CMAKE_SOURCE_DIR}/third_party/base64.c
-     ${CMAKE_SOURCE_DIR}/third_party/PMurHash.c
-     ${CMAKE_SOURCE_DIR}/third_party/msgpuck.c
+     ${PROJECT_SOURCE_DIR}/third_party/uri.c
+     ${PROJECT_SOURCE_DIR}/third_party/sha1.c
+     ${PROJECT_SOURCE_DIR}/third_party/base64.c
+     ${PROJECT_SOURCE_DIR}/third_party/PMurHash.c
 )
 
 #----------------------------------------------------------------------------#
@@ -52,6 +51,7 @@ set (TNT_SOURCES
 ## Static library
 project(tnt)
 add_library(${PROJECT_NAME} STATIC ${TNT_SOURCES})
+target_link_libraries(${PROJECT_NAME} ${MSGPUCK_LIBRARIES})
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION   ${LIBTNT_VERSION})
 set_target_properties(${PROJECT_NAME} PROPERTIES SOVERSION ${LIBTNT_SOVERSION})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "tarantool")
@@ -65,6 +65,7 @@ install (TARGETS ${PROJECT_NAME}
 ## Shared library
 project(tnt_shared)
 add_library(${PROJECT_NAME} SHARED ${TNT_SOURCES})
+target_link_libraries(${PROJECT_NAME} ${MSGPUCK_LIBRARIES})
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION   ${LIBTNT_VERSION})
 set_target_properties(${PROJECT_NAME} PROPERTIES SOVERSION ${LIBTNT_SOVERSION})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "tarantool")

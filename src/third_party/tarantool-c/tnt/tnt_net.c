@@ -107,15 +107,13 @@ tnt_net_reply(struct tnt_stream *s, struct tnt_reply *r) {
 }
 
 struct tnt_stream *tnt_net(struct tnt_stream *s) {
-	int allocated = s == NULL;
 	s = tnt_stream_init(s);
 	if (s == NULL)
 		return NULL;
 	/* allocating stream data */
 	s->data = tnt_mem_alloc(sizeof(struct tnt_stream_net));
 	if (s->data == NULL) {
-		if (allocated)
-			tnt_stream_free(s);
+		tnt_stream_free(s);
 		return NULL;
 	}
 	memset(s->data, 0, sizeof(struct tnt_stream_net));
@@ -130,15 +128,10 @@ struct tnt_stream *tnt_net(struct tnt_stream *s) {
 	sn->fd = -1;
 	sn->greeting = tnt_mem_alloc(TNT_GREETING_SIZE);
 	if (sn->greeting == NULL) {
-		s->free(s);
-		if (allocated)
-			tnt_stream_free(s);
-		return NULL;
+		tnt_stream_free(s);
 	}
 	if (tnt_opt_init(&sn->opt) == -1) {
-		s->free(s);
-		if (allocated)
-			tnt_stream_free(s);
+		tnt_stream_free(s);
 	}
 	return s;
 }
@@ -177,7 +170,7 @@ int tnt_reload_schema(struct tnt_stream *s)
 	struct tnt_stream_net *sn = TNT_SNET_CAST(s);
 	if (!sn->connected || pm_atomic_load(&s->wrcnt) != 0)
 		return -1;
-	uint32_t oldsync = tnt_stream_reqid(s, 127);
+	uint64_t oldsync = tnt_stream_reqid(s, 127);
 	tnt_get_space(s);
 	tnt_get_index(s);
 	tnt_stream_reqid(s, oldsync);
@@ -233,7 +226,8 @@ tnt_authenticate(struct tnt_stream *s)
 	tnt_auth(s, uri->login, uri->login_len, uri->password,
 		 uri->password_len);
 	tnt_flush(s);
-	struct tnt_reply rep; tnt_reply_init(&rep);
+	struct tnt_reply rep;
+	tnt_reply_init(&rep);
 	if (s->read_reply(s, &rep) == -1)
 		return -1;
 	if (rep.error != NULL) {
@@ -241,6 +235,7 @@ tnt_authenticate(struct tnt_stream *s)
 			sn->error = TNT_ELOGIN;
 		return -1;
 	}
+	tnt_reply_free(&rep);
 	tnt_reload_schema(s);
 	return 0;
 }
@@ -265,7 +260,11 @@ int tnt_connect(struct tnt_stream *s)
 
 void tnt_close(struct tnt_stream *s) {
 	struct tnt_stream_net *sn = TNT_SNET_CAST(s);
+	tnt_iob_clear(&sn->sbuf);
+	tnt_iob_clear(&sn->rbuf);
 	tnt_io_close(sn);
+	s->wrcnt = 0;
+	s->reqid = 0;
 }
 
 ssize_t tnt_flush(struct tnt_stream *s) {

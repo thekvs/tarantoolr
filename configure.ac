@@ -40,7 +40,7 @@ $(cd src/third_party/; \
 
 AC_MSG_NOTICE([Finished building tarantool-c library])
 
-TARANTOOL_LIBS="$(pwd)/src/third_party/install/lib/libtarantool.a"
+TARANTOOL_LIBS="$(pwd)/src/third_party/install/lib/libtarantool.a $(pwd)/src/third_party/build/libtarantool/third_party/msgpuck/libmsgpuck.a"
 TARANTOOL_INCL="-I$(pwd)/src/third_party/tarantool-c/third_party/msgpuck"
 
 tarantool_cflags="${TARANTOOL_INCL}"

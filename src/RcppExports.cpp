@@ -7,7 +7,7 @@ using namespace Rcpp;
 
 // exportTarantoolConstants
 void exportTarantoolConstants();
-RcppExport SEXP tarantoolr_exportTarantoolConstants() {
+RcppExport SEXP _tarantoolr_exportTarantoolConstants() {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     exportTarantoolConstants();
@@ -18,7 +18,7 @@ END_RCPP
 RcppExport SEXP _rcpp_module_boot_Tarantool();
 
 static const R_CallMethodDef CallEntries[] = {
-    {"tarantoolr_exportTarantoolConstants", (DL_FUNC) &tarantoolr_exportTarantoolConstants, 0},
+    {"_tarantoolr_exportTarantoolConstants", (DL_FUNC) &_tarantoolr_exportTarantoolConstants, 0},
     {"_rcpp_module_boot_Tarantool", (DL_FUNC) &_rcpp_module_boot_Tarantool, 0},
     {NULL, NULL, 0}
 };

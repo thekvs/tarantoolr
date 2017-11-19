@@ -70,8 +70,8 @@ mp_dump (const char *addr, size_t len) {
 		if (begin) {
 			begin = 0;
 		} else {
-			if (stack_size) {
-				while (stack_size && stack[stack_size - 1].lft == 0) {
+			if (stack_size > 0) {
+				while (stack_size > 0 && stack[stack_size - 1].lft == 0) {
 					switch (stack[stack_size - 1].type) {
 					case (MP_ARRAY):
 						printf("]");
@@ -84,8 +84,8 @@ mp_dump (const char *addr, size_t len) {
 					}
 					stack_size -= 1;
 				}
-				if (stack_size && stack[stack_size - 1].type == MP_MAP &&
-					    stack[stack_size - 1].lft % 2) {
+				if (stack_size > 0 && stack[stack_size - 1].type == MP_MAP) {
+					if (stack[stack_size - 1].lft % 2) {
 						printf(":");
 					} else if (!stack[stack_size - 1].start_flag) {
 						printf(",");
@@ -94,6 +94,7 @@ mp_dump (const char *addr, size_t len) {
 						printf(" ");
 					stack[stack_size - 1].start_flag = 0;
 					stack[stack_size - 1].lft -= 1;
+				}
 			}
 			if (!stack_size) {
 				printf("\n  ");
@@ -160,7 +161,7 @@ mp_dump (const char *addr, size_t len) {
 			mp_next(&addr);
 		}
 	}
-	while (stack_size && stack[stack_size - 1].lft == 0) {
+	while (stack_size > 0 && stack[stack_size - 1].lft == 0) {
 		switch (stack[stack_size - 1].type) {
 		case (MP_ARRAY):
 			printf("]");
@@ -209,18 +210,24 @@ check_nbytes(struct tnt_stream *s, const char *bb, size_t bb_size) {
 	return check_bbytes(sn->sbuf.buf, sn->sbuf.off, bb, bb_size);
 }
 
+int dump_schema_index(struct tnt_schema_sval *sval) {
+	mh_int_t ipos = 0;
+	mh_foreach(sval->index, ipos) {
+		struct tnt_schema_ival *ival = NULL;
+		ival = (*mh_assoc_node(sval->index, ipos))->data;
+		printf("    %d: %s\n", ival->number, ival->name);
+	}
+	return 0;
+}
+
 int dump_schema(struct tnt_stream *s) {
 	struct mh_assoc_t *schema = (TNT_SNET_CAST(s)->schema)->space_hash;
-	mh_int_t spos = 0, ipos = 0;
+	mh_int_t spos = 0;
 	mh_foreach(schema, spos) {
 		struct tnt_schema_sval *sval = NULL;
 		sval = (*mh_assoc_node(schema, spos))->data;
 		printf("  %d: %s\n", sval->number, sval->name);
-		mh_foreach(sval->index, ipos) {
-			struct tnt_schema_ival *ival = NULL;
-			ival = (*mh_assoc_node(sval->index, ipos))->data;
-			printf("    %d: %s\n", ival->number, ival->name);
-		}
+		(void )dump_schema_index(sval);
 	}
 	return 0;
 }

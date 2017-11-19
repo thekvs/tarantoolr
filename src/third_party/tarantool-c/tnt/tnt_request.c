@@ -58,6 +58,7 @@ TNT_REQUEST_CUSTOM(replace, REPLACE);
 TNT_REQUEST_CUSTOM(update, UPDATE);
 TNT_REQUEST_CUSTOM(delete, DELETE);
 TNT_REQUEST_CUSTOM(call, CALL);
+TNT_REQUEST_CUSTOM(call_16, CALL_16);
 TNT_REQUEST_CUSTOM(auth, AUTH);
 TNT_REQUEST_CUSTOM(eval, EVAL);
 TNT_REQUEST_CUSTOM(upsert, UPSERT);
@@ -130,7 +131,7 @@ int
 tnt_request_set_func(struct tnt_request *req, const char *func,
 		     uint32_t flen)
 {
-	if (req->hdr.type != TNT_OP_CALL)
+	if (!is_call(req->hdr.type))
 		return -1;
 	if (!func)
 		return -1;
@@ -141,7 +142,7 @@ tnt_request_set_func(struct tnt_request *req, const char *func,
 int
 tnt_request_set_funcz(struct tnt_request *req, const char *func)
 {
-	if (req->hdr.type != TNT_OP_CALL)
+	if (!is_call(req->hdr.type))
 		return -1;
 	if (!func)
 		return -1;
@@ -211,10 +212,14 @@ int tnt_request_set_tuple_format(struct tnt_request *req, const char *fmt, ...)
 	return tnt_request_set_tuple(req, req->tuple_object);
 }
 
-int64_t
-tnt_request_compile(struct tnt_stream *s, struct tnt_request *req)
-{
+int
+tnt_request_writeout(struct tnt_stream *s, struct tnt_request *req,
+		     uint64_t *sync) {
 	enum tnt_request_t tp = req->hdr.type;
+	if (sync != NULL && *sync == INT64_MAX &&
+	    (s->reqid & INT64_MAX) == INT64_MAX) {
+		s->reqid = 0;
+	}
 	req->hdr.sync = s->reqid++;
 	/* header */
 	/* int (9) + 1 + sync + 1 + op */
@@ -231,7 +236,7 @@ tnt_request_compile(struct tnt_stream *s, struct tnt_request *req)
 	pos = mp_encode_uint(pos, req->hdr.sync); /* 9 */
 	char *map = pos++;                        /* 1 */
 	size_t nd = 0;
-	if (tp < TNT_OP_CALL) {
+	if (tp < TNT_OP_CALL_16 || tp == TNT_OP_UPSERT) {
 		pos = mp_encode_uint(pos, TNT_SPACE);     /* 1 */
 		pos = mp_encode_uint(pos, req->space_id); /* 5 */
 		nd += 1;
@@ -264,6 +269,7 @@ tnt_request_compile(struct tnt_stream *s, struct tnt_request *req)
 			pos = mp_encode_uint(pos, TNT_EXPRESSION);          /* 1 */
 			pos = mp_encode_strl(pos, req->key_end - req->key); /* 5 */
 			break;
+		case TNT_OP_CALL_16:
 		case TNT_OP_CALL:
 			pos = mp_encode_uint(pos, TNT_FUNCTION);            /* 1 */
 			pos = mp_encode_strl(pos, req->key_end - req->key); /* 5 */
@@ -306,14 +312,25 @@ tnt_request_compile(struct tnt_stream *s, struct tnt_request *req)
 		v[v_sz++].iov_len = pos - begin;
 	}
 	mp_encode_map(map, nd);
-	size_t plen = 0; nd = 0;
+
+	size_t plen = 0;
 	for (int i = 1; i < v_sz; ++i) plen += v[i].iov_len;
-	nd = mp_sizeof_luint32(plen);
-	v[0].iov_base -= nd;
-	v[0].iov_len  += nd;
+	size_t hlen = mp_sizeof_luint32(plen);
+	v[0].iov_base -= hlen;
+	v[0].iov_len  += hlen;
 	mp_encode_luint32(v[0].iov_base, plen);
 	ssize_t rv = s->writev(s, v, v_sz);
 	if (rv == -1)
 		return -1;
-	return req->hdr.sync;
+	if (sync != NULL)
+		*sync = req->hdr.sync;
+	return 0;
+}
+
+int64_t
+tnt_request_compile(struct tnt_stream *s, struct tnt_request *req) {
+	uint64_t sync = INT64_MAX;
+	if (tnt_request_writeout(s, req, &sync) == -1)
+		return -1;
+	return sync;
 }

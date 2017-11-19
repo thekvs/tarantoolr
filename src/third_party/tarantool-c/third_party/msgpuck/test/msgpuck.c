@@ -1,3 +1,35 @@
+/*
+ * Copyright (c) 2013-2016 MsgPuck Authors
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or
+ * without modification, are permitted provided that the following
+ * conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above
+ *    copyright notice, this list of conditions and the
+ *    following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above
+ *    copyright notice, this list of conditions and the following
+ *    disclaimer in the documentation and/or other materials
+ *    provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY <COPYRIGHT HOLDER> ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+ * <COPYRIGHT HOLDER> OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+ * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
@@ -6,11 +38,12 @@
 #include "msgpuck.h"
 #include "test.h"
 
-#define BUF_MAXLEN (1L << 18)
+#define BUF_MAXLEN ((1L << 18) - 1)
 #define STRBIN_MAXLEN (BUF_MAXLEN - 10)
 
-static char data[BUF_MAXLEN];
+static char buf[BUF_MAXLEN + 1];
 static char str[STRBIN_MAXLEN];
+static char *data = buf + 1; /* use unaligned address to fail early */
 
 #define header() note("*** %s ***", __func__)
 #define footer() note("*** %s: done ***", __func__)
@@ -44,10 +77,14 @@ static char str[STRBIN_MAXLEN];
 		s1[i] = 'a' + i % 26;                                          \
 	}                                                                      \
 	const char *d1 = mp_encode_##_type(data, s1, _vl);                     \
-	const char *d2 = data;                                                 \
+	const char *d2;                                                        \
 	uint32_t len2;                                                         \
+	d2 = data;                                                             \
 	const char *s2 = mp_decode_##_type(&d2, &len2);                        \
 	is(_vl, len2, "len(mp_decode_"#_type"(x, %u))", _vl);                  \
+	d2 = data;                                                             \
+	(void) mp_decode_strbin(&d2, &len2);                                   \
+	is(_vl, len2, "len(mp_decode_strbin(x, %u))", _vl);                    \
 	const char *d3 = data;                                                 \
 	mp_next(&d3);                                                          \
 	const char *d4 = data;                                                 \
@@ -135,7 +172,7 @@ test_ints(void)
 	     "\xd3\xff\xff\xff\xff\x7f\xff\xff\xff", 9);
 	test_int(-0x7fffffffffffffffLL,
 	     "\xd3\x80\x00\x00\x00\x00\x00\x00\x01", 9);
-	test_int(-0x8000000000000000LL,
+	test_int((int64_t)-0x8000000000000000LL,
 	     "\xd3\x80\x00\x00\x00\x00\x00\x00\x00", 9);
 
 	footer();
@@ -220,11 +257,11 @@ test_arrays(void)
 	test_array(1, "\x91", 1);
 	test_array(15, "\x9f", 1);
 	test_array(16, "\xdc\x00\x10", 3);
-	test_array(UINT16_MAX - 1, "\xdc\xff\xfe", 3);
-	test_array(UINT16_MAX, "\xdc\xff\xff", 3);
-	test_array(UINT16_MAX + 1, "\xdd\x00\x01\x00\x00", 5);
-	test_array(UINT32_MAX - 1, "\xdd\xff\xff\xff\xfe", 5);
-	test_array(UINT32_MAX, "\xdd\xff\xff\xff\xff", 5);
+	test_array(0xfffe, "\xdc\xff\xfe", 3);
+	test_array(0xffff, "\xdc\xff\xff", 3);
+	test_array(0x10000, "\xdd\x00\x01\x00\x00", 5);
+	test_array(0xfffffffeU, "\xdd\xff\xff\xff\xfe", 5);
+	test_array(0xffffffffU, "\xdd\xff\xff\xff\xff", 5);
 
 	footer();
 	return check_plan();
@@ -240,11 +277,11 @@ test_maps(void)
 	test_map(1, "\x81", 1);
 	test_map(15, "\x8f", 1);
 	test_map(16, "\xde\x00\x10", 3);
-	test_map(UINT16_MAX - 1, "\xde\xff\xfe", 3);
-	test_map(UINT16_MAX, "\xde\xff\xff", 3);
-	test_map(UINT16_MAX + 1, "\xdf\x00\x01\x00\x00", 5);
-	test_map(UINT32_MAX - 1, "\xdf\xff\xff\xff\xfe", 5);
-	test_map(UINT32_MAX, "\xdf\xff\xff\xff\xff", 5);
+	test_map(0xfffe, "\xde\xff\xfe", 3);
+	test_map(0xffff, "\xde\xff\xff", 3);
+	test_map(0x10000, "\xdf\x00\x01\x00\x00", 5);
+	test_map(0xfffffffeU, "\xdf\xff\xff\xff\xfe", 5);
+	test_map(0xffffffffU, "\xdf\xff\xff\xff\xff", 5);
 
 	footer();
 	return check_plan();
@@ -307,7 +344,7 @@ test_binls(void)
 static int
 test_strs(void)
 {
-	plan(84);
+	plan(96);
 	header();
 
 	test_str(0x01);
@@ -330,7 +367,7 @@ test_strs(void)
 static int
 test_bins(void)
 {
-	plan(84);
+	plan(96);
 	header();
 
 	test_bin(0x01);
@@ -363,10 +400,10 @@ test_next_on_array(uint32_t count)
 	const char *d2 = data;
 	const char *d3 = data;
 	ok(!mp_check(&d2, data + BUF_MAXLEN), "mp_check(array %u))", count);
-	is((d1 - data), len, "len(array %u) == %u", count, len);
-	is((d2 - data), len, "len(mp_check(array %u)) == %u", count, len);
+	is((d1 - data), (ptrdiff_t)len, "len(array %u) == %u", count, len);
+	is((d2 - data), (ptrdiff_t)len, "len(mp_check(array %u)) == %u", count, len);
 	mp_next(&d3);
-	is((d3 - data), len, "len(mp_next(array %u)) == %u", count, len);
+	is((d3 - data), (ptrdiff_t)len, "len(mp_next(array %u)) == %u", count, len);
 }
 
 static int
@@ -406,10 +443,10 @@ test_next_on_map(uint32_t count)
 	const char *d2 = data;
 	const char *d3 = data;
 	ok(!mp_check(&d2, data + BUF_MAXLEN), "mp_check(map %u))", count);
-	is((d1 - data), len, "len(map %u) == %u", count, len);
-	is((d2 - data), len, "len(mp_check(map %u)) == %u", count, len);
+	is((d1 - data), (ptrdiff_t)len, "len(map %u) == %u", count, len);
+	is((d2 - data), (ptrdiff_t)len, "len(mp_check(map %u)) == %u", count, len);
 	mp_next(&d3);
-	is((d3 - data), len, "len(mp_next(map %u)) == %u", count, len);
+	is((d3 - data), (ptrdiff_t)len, "len(mp_next(map %u)) == %u", count, len);
 }
 
 static int
@@ -494,7 +531,7 @@ dequal(double a, double b)
 static int
 test_format(void)
 {
-	plan(230);
+	plan(282);
 	header();
 
 	const size_t buf_size = 1024;
@@ -512,7 +549,7 @@ test_format(void)
 		       (short)10, (short)11, (short)12,
 		       (char)13, (char)14, (char)15);
 	p = buf;
-	for (int i = 0; i < 15; i++) {
+	for (unsigned i = 0; i < 15; i++) {
 		ok(mp_typeof(*p) == MP_UINT, "Test type on step %d", i);
 		ok(mp_decode_uint(&p) == i + 1, "Test value on step %d", i);
 	}
@@ -520,7 +557,7 @@ test_format(void)
 		       (long)-4, (long)-5, (long)-6,
 		       (long long)-7, (long long)-8, (long long)-9,
 		       (short)-10, (unsigned short)-11, (short)-12,
-		       (char)-13, (unsigned char)-14, (char)-15);
+		       (signed char)-13, (unsigned char)-14, (signed char)-15);
 	p = buf;
 	for (int i = 0; i < 15; i++) {
 		uint64_t expects[5] = { UINT_MAX - 1,
@@ -539,134 +576,175 @@ test_format(void)
 		}
 	}
 
+	char data1[32];
+	char *data1_end = data1;
+	data1_end = mp_encode_array(data1_end, 2);
+	data1_end = mp_encode_str(data1_end, "ABC", 3);
+	data1_end = mp_encode_uint(data1_end, 11);
+	size_t data1_len = data1_end - data1;
+	assert(data1_len <= sizeof(data1));
+
+	char data2[32];
+	char *data2_end = data2;
+	data2_end = mp_encode_int(data2_end, -1234567890);
+	data2_end = mp_encode_str(data2_end, "DEFGHIJKLMN", 11);
+	data2_end = mp_encode_uint(data2_end, 321);
+	size_t data2_len = data2_end - data2;
+	assert(data2_len <= sizeof(data2));
+
 	fmt = "%d NIL [%d %b %b] this is test"
-		"[%d %%%% [[ %d {%s %f %%  %.*s %lf %.*s NIL} %d ]] %d%d%d]";
+		"[%d %%%% [[ %d {%s %f %%  %.*s %lf %.*s NIL}"
+		"%p %d %.*p ]] %d%d%d]";
 #define TEST_PARAMS 0, 1, true, false, -1, 2, \
-	"flt", 0.1, 6, "double#ignored", 0.2, 0, "ignore", 3, 4, 5, 6
+	"flt", 0.1, 6, "double#ignored", 0.2, 0, "ignore", \
+	data1, 3, data2_len, data2, 4, 5, 6
 	sz = mp_format(buf, buf_size, fmt, TEST_PARAMS);
 	p = buf;
 	e = buf + sz;
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_UINT, "type at %d", __LINE__);
-	ok(mp_decode_uint(&p) == 0, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 0, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_NIL, "type at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_NIL, "type");
 	mp_decode_nil(&p);
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_ARRAY, "type at %d", __LINE__);
-	ok(mp_decode_array(&p) == 3, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_ARRAY, "type");
+	ok(mp_decode_array(&p) == 3, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_UINT, "type at %d", __LINE__);
-	ok(mp_decode_uint(&p) == 1, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 1, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_BOOL, "type at %d", __LINE__);
-	ok(mp_decode_bool(&p) == true, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_BOOL, "type");
+	ok(mp_decode_bool(&p) == true, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_BOOL, "type at %d", __LINE__);
-	ok(mp_decode_bool(&p) == false, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_BOOL, "type");
+	ok(mp_decode_bool(&p) == false, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_ARRAY, "type at %d", __LINE__);
-	ok(mp_decode_array(&p) == 5, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_ARRAY, "type");
+	ok(mp_decode_array(&p) == 5, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_INT, "type at %d", __LINE__);
-	ok(mp_decode_int(&p) == -1, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_INT, "type");
+	ok(mp_decode_int(&p) == -1, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_ARRAY, "type at %d", __LINE__);
-	ok(mp_decode_array(&p) == 1, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_ARRAY, "type");
+	ok(mp_decode_array(&p) == 1, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_ARRAY, "type at %d", __LINE__);
-	ok(mp_decode_array(&p) == 3, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_ARRAY, "type");
+	ok(mp_decode_array(&p) == 5, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_UINT, "type at %d", __LINE__);
-	ok(mp_decode_uint(&p) == 2, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 2, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_MAP, "type at %d", __LINE__);
-	ok(mp_decode_map(&p) == 3, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_MAP, "type");
+	ok(mp_decode_map(&p) == 3, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_STR, "type at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_STR, "type");
 	c = mp_decode_str(&p, &len);
-	ok(len == 3, "decode at %d", __LINE__);
-	ok(memcmp(c, "flt", 3) == 0, "compare at %d", __LINE__);
+	ok(len == 3, "decode");
+	ok(memcmp(c, "flt", 3) == 0, "compare");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_FLOAT, "type at %d", __LINE__);
-	ok(fequal(mp_decode_float(&p), 0.1), "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_FLOAT, "type");
+	ok(fequal(mp_decode_float(&p), 0.1), "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_STR, "type at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_STR, "type");
 	c = mp_decode_str(&p, &len);
-	ok(len == 6, "decode at %d", __LINE__);
-	ok(memcmp(c, "double", 6) == 0, "compare at %d", __LINE__);
+	ok(len == 6, "decode");
+	ok(memcmp(c, "double", 6) == 0, "compare");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_DOUBLE, "type at %d", __LINE__);
-	ok(dequal(mp_decode_double(&p), 0.2), "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_DOUBLE, "type");
+	ok(dequal(mp_decode_double(&p), 0.2), "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_STR, "type at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_STR, "type");
 	c = mp_decode_str(&p, &len);
-	ok(len == 0, "decode at %d", __LINE__);
+	ok(len == 0, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_NIL, "type at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_NIL, "type");
 	mp_decode_nil(&p);
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_UINT, "type at %d", __LINE__);
-	ok(mp_decode_uint(&p) == 3, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(((size_t)(c - p) == data1_len) &&
+	   memcmp(p, data1, data1_len) == 0, "compare");
+	p = c;
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_UINT, "type at %d", __LINE__);
-	ok(mp_decode_uint(&p) == 4, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 3, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_UINT, "type at %d", __LINE__);
-	ok(mp_decode_uint(&p) == 5, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_INT, "type");
+	ok(mp_decode_int(&p) == -1234567890, "decode");
 
 	c = p;
-	ok(mp_check(&c, e) == 0, "check at %d", __LINE__);
-	ok(mp_typeof(*p) == MP_UINT, "type at %d", __LINE__);
-	ok(mp_decode_uint(&p) == 6, "decode at %d", __LINE__);
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_STR, "type");
+	c = mp_decode_str(&p, &len);
+	ok(len == 11, "decode");
+	ok(memcmp(c, "DEFGHIJKLMN", 11) == 0, "compare");
+
+	c = p;
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 321, "decode");
+
+	c = p;
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 4, "decode");
+
+	c = p;
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 5, "decode");
+
+	c = p;
+	ok(mp_check(&c, e) == 0, "check");
+	ok(mp_typeof(*p) == MP_UINT, "type");
+	ok(mp_decode_uint(&p) == 6, "decode");
 
 	ok(p == e, "nothing more");
 
-	ok(sz < 50, "no magic detected");
+	ok(sz < 70, "no magic detected");
 
-	for (size_t lim = 0; lim <= 50; lim++) {
+	for (size_t lim = 0; lim <= 70; lim++) {
 		memset(buf, 0, buf_size);
 		size_t test_sz = mp_format(buf, lim, fmt, TEST_PARAMS);
 		ok(test_sz == sz, "return value on step %d", (int)lim);
@@ -683,10 +761,303 @@ test_format(void)
 	return check_plan();
 }
 
+int
+test_mp_print()
+{
+	plan(10);
+	header();
+
+	char msgpack[128];
+	char *d = msgpack;
+	d = mp_encode_array(d, 6);
+	d = mp_encode_int(d, -5);
+	d = mp_encode_uint(d, 42);
+	d = mp_encode_str(d, "kill bill", 9);
+	d = mp_encode_map(d, 6);
+	d = mp_encode_str(d, "bool true", 9);
+	d = mp_encode_bool(d, true);
+	d = mp_encode_str(d, "bool false", 10);
+	d = mp_encode_bool(d, false);
+	d = mp_encode_str(d, "null", 4);
+	d = mp_encode_nil(d);
+	d = mp_encode_str(d, "float", 5);
+	d = mp_encode_float(d, 3.14);
+	d = mp_encode_str(d, "double", 6);
+	d = mp_encode_double(d, 3.14);
+	d = mp_encode_uint(d, 100);
+	d = mp_encode_uint(d, 500);
+	*d++ = 0xd4; /* let's pack smallest fixed ext */
+	*d++ = 0;
+	*d++ = 0;
+	char bin[] = "\x12test\x34\b\t\n\"bla\\-bla\"\f\r";
+	d = mp_encode_bin(d, bin, sizeof(bin));
+	assert(d <= msgpack + sizeof(msgpack));
+
+	const char *expected =
+		"[-5, 42, \"kill bill\", "
+		"{\"bool true\": true, \"bool false\": false, \"null\": null, "
+		"\"float\": 3.14, \"double\": 3.14, 100: 500}, undefined, "
+		"\"\\u0012test4\\b\\t\\n\\\"bla\\\\-bla\\\"\\f\\r\\u0000\"]";
+	int esize = strlen(expected);
+
+	char result[256];
+
+	int fsize = mp_snprint(result, sizeof(result), msgpack);
+	ok(fsize == esize, "mp_snprint return value");
+	ok(strcmp(result, expected) == 0, "mp_snprint result");
+
+	fsize = mp_snprint(NULL, 0, msgpack);
+	ok(fsize == esize, "mp_snprint limit = 0");
+
+	fsize = mp_snprint(result, 1, msgpack);
+	ok(fsize == esize && result[0] == '\0', "mp_snprint limit = 1");
+
+	fsize = mp_snprint(result, 2, msgpack);
+	ok(fsize == esize && result[1] == '\0', "mp_snprint limit = 2");
+
+	fsize = mp_snprint(result, esize, msgpack);
+	ok(fsize == esize && result[esize - 1] == '\0',
+	   "mp_snprint limit = expected");
+
+	fsize = mp_snprint(result, esize + 1, msgpack);
+	ok(fsize == esize && result[esize] == '\0',
+	   "mp_snprint limit = expected + 1");
+
+	FILE *tmpf = tmpfile();
+	if (tmpf != NULL) {
+		int fsize = mp_fprint(tmpf, msgpack);
+		ok(fsize == esize, "mp_fprint return value");
+		(void) rewind(tmpf);
+		int rsize = fread(result, 1, sizeof(result), tmpf);
+		ok(rsize == esize && memcmp(result, expected, esize) == 0,
+		   "mp_fprint result");
+		fclose(tmpf);
+	}
+
+	/* stdin is read-only */
+	int rc = mp_fprint(stdin, msgpack);
+	is(rc, -1, "mp_fprint I/O error");
+
+	footer();
+	return check_plan();
+}
+
+int
+test_mp_check()
+{
+	plan(65);
+	header();
+
+#define invalid(data, fmt, ...) ({ \
+	const char *p = data; \
+	isnt(mp_check(&p, p + sizeof(data) - 1), 0, fmt, ## __VA_ARGS__); \
+});
+
+	/* fixmap */
+	invalid("\x81", "invalid fixmap 1");
+	invalid("\x81\x01", "invalid fixmap 2");
+	invalid("\x8f\x01", "invalid fixmap 3");
+
+	/* fixarray */
+	invalid("\x91", "invalid fixarray 1");
+	invalid("\x92\x01", "invalid fixarray 2");
+	invalid("\x9f\x01", "invalid fixarray 3");
+
+	/* fixstr */
+	invalid("\xa1", "invalid fixstr 1");
+	invalid("\xa2\x00", "invalid fixstr 2");
+	invalid("\xbf\x00", "invalid fixstr 3");
+
+	/* bin8 */
+	invalid("\xc4", "invalid bin8 1");
+	invalid("\xc4\x01", "invalid bin8 2");
+
+	/* bin16 */
+	invalid("\xc5", "invalid bin16 1");
+	invalid("\xc5\x00\x01", "invalid bin16 2");
+
+	/* bin32 */
+	invalid("\xc6", "invalid bin32 1");
+	invalid("\xc6\x00\x00\x00\x01", "invalid bin32 2");
+
+	/* ext8 */
+	invalid("\xc7", "invalid ext8 1");
+	invalid("\xc7\x00", "invalid ext8 2");
+	invalid("\xc7\x01\xff", "invalid ext8 3");
+	invalid("\xc7\x02\xff\x00", "invalid ext8 4");
+
+	/* ext16 */
+	invalid("\xc8", "invalid ext16 1");
+	invalid("\xc8\x00\x00", "invalid ext16 2");
+	invalid("\xc8\x00\x01\xff", "invalid ext16 3");
+	invalid("\xc8\x00\x02\xff\x00", "invalid ext16 4");
+
+	/* ext32 */
+	invalid("\xc9", "invalid ext32 1");
+	invalid("\xc9\x00\x00\x00\x00", "invalid ext32 2");
+	invalid("\xc9\x00\x00\x00\x01\xff", "invalid ext32 3");
+	invalid("\xc9\x00\x00\x00\x02\xff\x00", "invalid ext32 4");
+
+	/* float32 */
+	invalid("\xca", "invalid float32 1");
+	invalid("\xca\x00\x00\x00", "invalid float32 2");
+
+	/* float64 */
+	invalid("\xcb", "invalid float64 1");
+	invalid("\xcb\x00\x00\x00\x00\x00\x00\x00", "invalid float64 2");
+
+	/* uint8 */
+	invalid("\xcc", "invalid uint8 1");
+
+	/* uint16 */
+	invalid("\xcd\x00", "invalid uint16 1");
+
+	/* uint32 */
+	invalid("\xce\x00\x00\x00", "invalid uint32 1");
+
+	/* uint64 */
+	invalid("\xcf\x00\x00\x00\x00\x00\x00\x00", "invalid uint64 1");
+
+	/* int8 */
+	invalid("\xd0", "invalid int8 1");
+
+	/* int16 */
+	invalid("\xd1\x00", "invalid int16 1");
+
+	/* int32 */
+	invalid("\xd2\x00\x00\x00", "invalid int32 1");
+
+	/* int64 */
+	invalid("\xd3\x00\x00\x00\x00\x00\x00\x00", "invalid int64 1");
+
+	/* fixext8 */
+	invalid("\xd4", "invalid fixext8 1");
+	invalid("\xd4\x05", "invalid fixext8 2");
+
+	/* fixext16 */
+	invalid("\xd5", "invalid fixext16 1");
+	invalid("\xd5\x05\x05", "invalid fixext16 2");
+
+	/* fixext32 */
+	invalid("\xd6", "invalid fixext32 1");
+	invalid("\xd6\x00\x00\x05\x05", "invalid fixext32 2");
+
+	/* fixext64 */
+	invalid("\xd7", "invalid fixext64 1");
+	invalid("\xd7\x00\x00\x00\x00\x00\x00\x05\x05", "invalid fixext64 2");
+
+	/* fixext128 */
+	invalid("\xd8", "invalid fixext128 1");
+	invalid("\xd8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		"\x00\x05\x05", "invalid fixext128 2");
+
+	/* str8 */
+	invalid("\xd9", "invalid str8 1");
+	invalid("\xd9\x01", "invalid str8 2");
+
+	/* str16 */
+	invalid("\xda", "invalid str16 1");
+	invalid("\xda\x00\x01", "invalid str16 2");
+
+	/* str32 */
+	invalid("\xdb", "invalid str32 1");
+	invalid("\xdb\x00\x00\x00\x01", "invalid str32 2");
+
+	/* array16 */
+	invalid("\xdc", "invalid array16 1");
+	invalid("\xdc\x00\x01", "invalid array16 2");
+
+	/* array32 */
+	invalid("\xdd", "invalid array32 1");
+	invalid("\xdd\x00\x00\x00\x01", "invalid array32 2");
+
+	/* map16 */
+	invalid("\xde", "invalid map16 1");
+	invalid("\xde\x00\x01", "invalid map16 2");
+	invalid("\xde\x00\x01\x5", "invalid map16 2");
+
+	/* map32 */
+	invalid("\xdf", "invalid map32 1");
+	invalid("\xdf\x00\x00\x00\x01", "invalid map32 2");
+	invalid("\xdf\x00\x00\x00\x01\x5", "invalid map32 3");
+
+	footer();
+
+	return check_plan();
+}
+
+#define test_read_number(_func, _type, _mp_type, _val, _success) do {	\
+	const char *s = #_func "(mp_encode_" #_mp_type "(" #_val "))";	\
+	const char *d1 = data;						\
+	const char *d2 = mp_encode_##_mp_type(data, _val);		\
+	_type v;							\
+	int ret = _func(&d1, &v);					\
+	if (_success) {							\
+		is(ret, 0, "%s check success", s);			\
+		is(d1, d2, "%s check pos advanced", s);			\
+		ok(v - _val == 0, "%s check result", s);		\
+	} else {							\
+		is(ret, -1, "%s check fail", s);			\
+		is(d1, data, "%s check pos unchanged", s);		\
+	}								\
+} while (0)
+
+#define test_read_int32(...)	test_read_number(mp_read_int32, int32_t, __VA_ARGS__)
+#define test_read_int64(...)	test_read_number(mp_read_int64, int64_t, __VA_ARGS__)
+#define test_read_double(...)	test_read_number(mp_read_double, double, __VA_ARGS__)
+
+static int
+test_numbers()
+{
+	plan(96);
+	header();
+
+	test_read_int32(uint, 123, true);
+	test_read_int32(uint, 12345, true);
+	test_read_int32(uint, 2147483647, true);
+	test_read_int32(uint, 2147483648, false);
+	test_read_int32(int, -123, true);
+	test_read_int32(int, -12345, true);
+	test_read_int32(int, -2147483648, true);
+	test_read_int32(int, -2147483649LL, false);
+	test_read_int32(float, -1e2, false);
+	test_read_int32(double, 1.2345, false);
+	test_read_int32(map, 5, false);
+
+	test_read_int64(uint, 123, true);
+	test_read_int64(uint, 12345, true);
+	test_read_int64(uint, 123456789, true);
+	test_read_int64(uint, 9223372036854775807ULL, true);
+	test_read_int64(uint, 9223372036854775808ULL, false);
+	test_read_int64(int, -123, true);
+	test_read_int64(int, -12345, true);
+	test_read_int64(int, -123456789, true);
+	test_read_int64(int, -9223372036854775807LL, true);
+	test_read_int64(float, 100, false);
+	test_read_int64(double, -5.4321, false);
+	test_read_int64(array, 10, false);
+
+	test_read_double(uint, 123, true);
+	test_read_double(uint, 12345, true);
+	test_read_double(uint, 123456789, true);
+	test_read_double(uint, 1234567890000ULL, true);
+	test_read_double(uint, 123456789123456789ULL, false);
+	test_read_double(int, -123, true);
+	test_read_double(int, -12345, true);
+	test_read_double(int, -123456789, true);
+	test_read_double(int, -1234567890000LL, true);
+	test_read_double(int, -123456789123456789LL, false);
+	test_read_double(float, 6.565e6, true);
+	test_read_double(double, -5.555, true);
+	test_read_double(strl, 100, false);
+
+	footer();
+	return check_plan();
+}
+
 int main()
 {
-	plan(16);
-
+	plan(19);
 	test_uints();
 	test_ints();
 	test_bools();
@@ -703,6 +1074,9 @@ int main()
 	test_next_on_maps();
 	test_compare_uints();
 	test_format();
+	test_mp_print();
+	test_mp_check();
+	test_numbers();
 
 	return check_plan();
 }

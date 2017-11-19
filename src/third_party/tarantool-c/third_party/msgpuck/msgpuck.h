@@ -1,7 +1,7 @@
 #ifndef MSGPUCK_H_INCLUDED
 #define MSGPUCK_H_INCLUDED
 /*
- * Copyright (c) 2013 MsgPuck Authors
+ * Copyright (c) 2013-2017 MsgPuck Authors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or
@@ -88,8 +88,7 @@
  *
  * \note Inline functions.
  * The implementation is compatible with both C99 and GNU inline functions.
- * Please define MP_SOURCE 1 before \#include <msgpuck.h> in a single
- * compilation unit. This module will be used to store non-inlined versions of
+ * Please link libmsgpuck.a static library for non-inlined versions of
  * functions and global tables.
  */
 
@@ -106,6 +105,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -115,28 +115,32 @@ extern "C" {
  * {{{ Platform-specific definitions
  */
 
-/** \cond 0 **/
+/** \cond false **/
 
 #if defined(__CC_ARM)         /* set the alignment to 1 for armcc compiler */
 #define MP_PACKED    __packed
 #else
-#define MP_PACKED
+#define MP_PACKED  __attribute__((packed))
+#endif
+
+#if defined(MP_SOURCE)
+#error MP_SOURCE is not supported anymore, please link libmsgpuck.a
 #endif
 
 #if defined(__GNUC__) && !defined(__GNUC_STDC_INLINE__)
-#if !defined(MP_SOURCE)
+#if !defined(MP_LIBRARY)
 #define MP_PROTO extern inline
 #define MP_IMPL extern inline
-#else /* defined(MP_SOURCE) */
+#else /* defined(MP_LIBRARY) */
 #define MP_PROTO
 #define MP_IMPL
 #endif
 #define MP_ALWAYSINLINE
 #else /* C99 inline */
-#if !defined(MP_SOURCE)
+#if !defined(MP_LIBRARY)
 #define MP_PROTO inline
 #define MP_IMPL inline
-#else /* defined(MP_SOURCE) */
+#else /* defined(MP_LIBRARY) */
 #define MP_PROTO extern inline
 #define MP_IMPL inline
 #endif
@@ -173,9 +177,7 @@ mp_unreachable(void) { assert(0); abort(); }
 #define mp_unreachable() (assert(0))
 #endif
 
-#define mp_bswap_u8(x) (x) /* just to simplify mp_load/mp_store macroses */
-
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define mp_identity(x) (x) /* just to simplify mp_load/mp_store macroses */
 
 #if MP_GCC_VERSION(4, 8) || __has_builtin(__builtin_bswap16)
 #define mp_bswap_u16(x) __builtin_bswap16(x)
@@ -209,11 +211,40 @@ mp_unreachable(void) { assert(0); abort(); }
 	(((x) >> 56) & UINT64_C(0x00000000000000ff)) )
 #endif
 
+#define MP_LOAD_STORE(name, type, bswap)					\
+MP_PROTO type									\
+mp_load_##name(const char **data);						\
+MP_IMPL type									\
+mp_load_##name(const char **data)						\
+{										\
+	struct MP_PACKED cast { type val; };					\
+	type val = bswap(((struct cast *) *data)->val);				\
+	*data += sizeof(type);							\
+	return val;								\
+}										\
+MP_PROTO char *									\
+mp_store_##name(char *data, type val);						\
+MP_IMPL char *									\
+mp_store_##name(char *data, type val)						\
+{										\
+	struct MP_PACKED cast { type val; };					\
+	((struct cast *) (data))->val = bswap(val);				\
+	return data + sizeof(type);						\
+}
+
+MP_LOAD_STORE(u8, uint8_t, mp_identity);
+
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+
+MP_LOAD_STORE(u16, uint16_t, mp_bswap_u16);
+MP_LOAD_STORE(u32, uint32_t, mp_bswap_u32);
+MP_LOAD_STORE(u64, uint64_t, mp_bswap_u64);
+
 #elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 
-#define mp_bswap_u16(x) (x)
-#define mp_bswap_u32(x) (x)
-#define mp_bswap_u64(x) (x)
+MP_LOAD_STORE(u16, uint16_t, mp_identity);
+MP_LOAD_STORE(u32, uint32_t, mp_identity);
+MP_LOAD_STORE(u64, uint64_t, mp_identity);
 
 #else
 #error Unsupported __BYTE_ORDER__
@@ -224,67 +255,82 @@ mp_unreachable(void) { assert(0); abort(); }
 #endif /* defined(__FLOAT_WORD_ORDER__) */
 
 #if __FLOAT_WORD_ORDER__ == __ORDER_LITTLE_ENDIAN__
-MP_PROTO float
-mp_bswap_float(float f);
 
+/*
+ * Idiots from msgpack.org byte-swaps even IEEE754 float/double types.
+ * Some platforms (e.g. arm) cause SIGBUS on attempt to store
+ * invalid float in registers, so code like flt = mp_bswap_float(flt)
+ * can't be used here.
+ */
+
+union MP_PACKED mp_float_cast {
+	uint32_t u32;
+	float f;
+};
+
+union MP_PACKED mp_double_cast {
+	uint64_t u64;
+	double d;
+};
+
+MP_PROTO float
+mp_load_float(const char **data);
 MP_PROTO double
-mp_bswap_double(double d);
+mp_load_double(const char **data);
+MP_PROTO char *
+mp_store_float(char *data, float val);
+MP_PROTO char *
+mp_store_double(char *data, double val);
 
 MP_IMPL float
-mp_bswap_float(float f)
+mp_load_float(const char **data)
 {
-	union {
-		float f;
-		uint32_t n;
-	} cast;
-	cast.f = f;
-	cast.n = mp_bswap_u32(cast.n);
+	union mp_float_cast cast = *(union mp_float_cast *) *data;
+	*data += sizeof(cast);
+	cast.u32 = mp_bswap_u32(cast.u32);
 	return cast.f;
 }
 
 MP_IMPL double
-mp_bswap_double(double d)
+mp_load_double(const char **data)
 {
-	union {
-		double d;
-		uint64_t n;
-	} cast;
-	cast.d = d;
-	cast.n = mp_bswap_u64(cast.n);
+	union mp_double_cast cast = *(union mp_double_cast *) *data;
+	*data += sizeof(cast);
+	cast.u64 = mp_bswap_u64(cast.u64);
 	return cast.d;
 }
+
+MP_IMPL char *
+mp_store_float(char *data, float val)
+{
+	union mp_float_cast cast;
+	cast.f = val;
+	cast.u32 = mp_bswap_u32(cast.u32);
+	*(union mp_float_cast *) (data) = cast;
+	return data + sizeof(cast);
+}
+
+MP_IMPL char *
+mp_store_double(char *data, double val)
+{
+	union mp_double_cast cast;
+	cast.d = val;
+	cast.u64 = mp_bswap_u64(cast.u64);
+	*(union mp_double_cast *) (data) = cast;
+	return data + sizeof(cast);
+}
+
 #elif __FLOAT_WORD_ORDER__ == __ORDER_BIG_ENDIAN__
-#define mp_bswap_float(x) (x)
-#define mp_bswap_double(x) (x)
+
+MP_LOAD_STORE(float, float, mp_identity);
+MP_LOAD_STORE(double, double, mp_identity);
+
 #else
 #error Unsupported __FLOAT_WORD_ORDER__
 #endif
 
-#define MP_LOAD_STORE(name, type)						\
-MP_PROTO type									\
-mp_load_##name(const char **data);						\
-MP_IMPL type									\
-mp_load_##name(const char **data)						\
-{										\
-	type val = mp_bswap_##name(*(MP_PACKED type *) *data);			\
-	*data += sizeof(type);							\
-	return val;								\
-}										\
-MP_PROTO char *									\
-mp_store_##name(char *data, type val);						\
-MP_IMPL char *									\
-mp_store_##name(char *data, type val)						\
-{										\
-	*(MP_PACKED type *) (data) = mp_bswap_##name(val);			\
-	return data + sizeof(type);						\
-}
-
-MP_LOAD_STORE(u8, uint8_t);
-MP_LOAD_STORE(u16, uint16_t);
-MP_LOAD_STORE(u32, uint32_t);
-MP_LOAD_STORE(u64, uint64_t);
-MP_LOAD_STORE(float, float);
-MP_LOAD_STORE(double, double);
+#undef mp_identity
+#undef MP_LOAD_STORE
 
 /** \endcond */
 
@@ -798,8 +844,10 @@ mp_encode_bin(char *data, const char *str, uint32_t len);
  * %b - bool
  * %s - zero-end string
  * %.*s - string with specified length
+ * %p - MsgPack data
+ * %.*p - MsgPack data with specified length
  * %% is ignored
- * %<smth else> assert and undefined behaviour
+ * %smthelse assert and undefined behaviour
  * NIL - a nil value
  * all other symbols are ignored.
  *
@@ -807,7 +855,7 @@ mp_encode_bin(char *data, const char *str, uint32_t len);
  * \retval > data_size means that is not enough space
  * and whole msgpack was not encoded.
  */
-MP_PROTO size_t
+size_t
 mp_format(char *data, size_t data_size, const char *format, ...);
 
 /**
@@ -817,10 +865,39 @@ mp_format(char *data, size_t data_size, const char *format, ...);
  *  va_start(args, fmt);
  *  mp_vformat(data, data_size, fmt, args);
  *  va_end(args);
- * \sa \link mp_format()
+ * \sa \link mp_format() mp_format() \endlink
  */
-MP_PROTO size_t
+size_t
 mp_vformat(char *data, size_t data_size, const char *format, va_list args);
+
+/**
+ * \brief print MsgPack data \a file using JSON-like format.
+ * MP_EXT is printed as "undefined"
+ * \param file - pointer to file (or NULL for stdout)
+ * \param data - pointer to buffer containing msgpack object
+ * \retval >=0 - the number of bytes printed
+ * \retval -1 - error
+ * \sa fprintf()
+ */
+int
+mp_fprint(FILE *file, const char *data);
+
+/**
+ * \brief format MsgPack data to \a buf using JSON-like format.
+ * \sa mp_fprint()
+ * \param buf - buffer to use
+ * \param size - buffer size. This function write at most size bytes
+ * (including the terminating null byte ('\0').
+ * \param data - pointer to buffer containing msgpack object
+ * \retval <size - the number of characters printed (excluding the null byte)
+ * \retval >=size - the number of characters (excluding the null byte),
+ *                  which would have been written to the final string if
+ *                  enough space had been available.
+ * \retval -1 - error
+ * \sa snprintf()
+ */
+int
+mp_snprint(char *buf, int size, const char *data);
 
 /**
  * \brief Check that \a cur buffer has enough bytes to decode a string header
@@ -887,6 +964,27 @@ mp_decode_binl(const char **data);
  */
 MP_PROTO const char *
 mp_decode_bin(const char **data, uint32_t *len);
+
+/**
+ * \brief Decode a length of a string or binstring from MsgPack \a data
+ * \param data - the pointer to a buffer
+ * \return a length of a string
+ * \post *data = *data + mp_sizeof_strbinl(retval)
+ * \sa mp_encode_binl
+ */
+MP_PROTO uint32_t
+mp_decode_strbinl(const char **data);
+
+/**
+ * \brief Decode a string or binstring from MsgPack \a data
+ * \param data - the pointer to a buffer
+ * \param len - the pointer to save a binstring length
+ * \return a pointer to a decoded binstring
+ * \post *data = *data + mp_sizeof_strbinl(*len)
+ * \sa mp_encode_binl
+ */
+MP_PROTO const char *
+mp_decode_strbin(const char **data, uint32_t *len);
 
 /**
  * \brief Calculate exact buffer size needed to store the nil value.
@@ -971,6 +1069,40 @@ MP_PROTO bool
 mp_decode_bool(const char **data);
 
 /**
+ * \brief Decode an integer value as int32_t from MsgPack \a data.
+ * \param data - the pointer to a buffer
+ * \param[out] ret - the pointer to save a result
+ * \retval  0 on success
+ * \retval -1 if underlying mp type is not MP_INT or MP_UINT
+ * \retval -1 if the result can't be stored in int32_t
+ */
+MP_PROTO int
+mp_read_int32(const char **data, int32_t *ret);
+
+/**
+ * \brief Decode an integer value as int64_t from MsgPack \a data.
+ * \param data - the pointer to a buffer
+ * \param[out] ret - the pointer to save a result
+ * \retval  0 on success
+ * \retval -1 if underlying mp type is not MP_INT or MP_UINT
+ * \retval -1 if the result can't be stored in int64_t
+ */
+MP_PROTO int
+mp_read_int64(const char **data, int64_t *ret);
+
+/**
+ * \brief Decode a floating point value as double from MsgPack \a data.
+ * \param data - the pointer to a buffer
+ * \param[out] ret - the pointer to save a result
+ * \retval  0 on success
+ * \retval -1 if underlying mp type is not MP_INT, MP_UINT,
+ *            MP_FLOAT, or MP_DOUBLE
+ * \retval -1 if the result can't be stored in double
+ */
+MP_PROTO int
+mp_read_double(const char **data, double *ret);
+
+/**
  * \brief Skip one element in a packed \a data.
  *
  * The function is faster than mp_typeof + mp_decode_XXX() combination.
@@ -1052,9 +1184,10 @@ mp_check(const char **data, const char *end);
  * {{{ Implementation
  */
 
-/** \cond 0 */
+/** \cond false */
 extern const enum mp_type mp_type_hint[];
 extern const int8_t mp_parser_hint[];
+extern const char *mp_char2escape[];
 
 MP_IMPL MP_ALWAYSINLINE enum mp_type
 mp_typeof(const char c)
@@ -1081,7 +1214,7 @@ mp_encode_array(char *data, uint32_t size)
 		return mp_store_u8(data, 0x90 | size);
 	} else if (size <= UINT16_MAX) {
 		data = mp_store_u8(data, 0xdc);
-		return mp_store_u16(data, size);
+		data = mp_store_u16(data, size);
 		return data;
 	} else {
 		data = mp_store_u8(data, 0xdd);
@@ -1180,14 +1313,14 @@ mp_decode_map(const char **data)
 {
 	uint8_t c = mp_load_u8(data);
 	switch (c) {
-	case 0x80 ... 0x8f:
-		return c & 0xf;
 	case 0xde:
 		return mp_load_u16(data);
 	case 0xdf:
 		return mp_load_u32(data);
 	default:
-		mp_unreachable();
+		if (mp_unlikely(c < 0x80 || c > 0x8f))
+			mp_unreachable();
+		return c & 0xf;
 	}
 }
 
@@ -1287,10 +1420,7 @@ MP_IMPL uint64_t
 mp_decode_uint(const char **data)
 {
 	uint8_t c = mp_load_u8(data);
-
 	switch (c) {
-	case 0x00 ... 0x7f:
-		return c;
 	case 0xcc:
 		return mp_load_u8(data);
 	case 0xcd:
@@ -1300,7 +1430,9 @@ mp_decode_uint(const char **data)
 	case 0xcf:
 		return mp_load_u64(data);
 	default:
-		mp_unreachable();
+		if (mp_unlikely(c > 0x7f))
+			mp_unreachable();
+		return c;
 	}
 }
 
@@ -1349,8 +1481,6 @@ mp_decode_int(const char **data)
 {
 	uint8_t c = mp_load_u8(data);
 	switch (c) {
-	case 0xe0 ... 0xff:
-		return (int8_t) (c);
 	case 0xd0:
 		return (int8_t) mp_load_u8(data);
 	case 0xd1:
@@ -1360,7 +1490,9 @@ mp_decode_int(const char **data)
 	case 0xd3:
 		return (int64_t) mp_load_u64(data);
 	default:
-		mp_unreachable();
+		if (mp_unlikely(c < 0xe0))
+			mp_unreachable();
+		return (int8_t) (c);
 	}
 }
 
@@ -1543,10 +1675,7 @@ MP_IMPL uint32_t
 mp_decode_strl(const char **data)
 {
 	uint8_t c = mp_load_u8(data);
-
 	switch (c) {
-	case 0xa0 ... 0xbf:
-		return c & 0x1f;
 	case 0xd9:
 		return mp_load_u8(data);
 	case 0xda:
@@ -1554,7 +1683,9 @@ mp_decode_strl(const char **data)
 	case 0xdb:
 		return mp_load_u32(data);
 	default:
-		mp_unreachable();
+		if (mp_unlikely(c < 0xa0 || c > 0xbf))
+			mp_unreachable();
+		return c & 0x1f;
 	}
 }
 
@@ -1592,6 +1723,42 @@ mp_decode_bin(const char **data, uint32_t *len)
 	assert(len != NULL);
 
 	*len = mp_decode_binl(data);
+	const char *str = *data;
+	*data += *len;
+	return str;
+}
+
+MP_IMPL uint32_t
+mp_decode_strbinl(const char **data)
+{
+	uint8_t c = mp_load_u8(data);
+
+	switch (c) {
+	case 0xd9:
+		return mp_load_u8(data);
+	case 0xda:
+		return mp_load_u16(data);
+	case 0xdb:
+		return mp_load_u32(data);
+	case 0xc4:
+		return mp_load_u8(data);
+	case 0xc5:
+		return mp_load_u16(data);
+	case 0xc6:
+		return mp_load_u32(data);
+	default:
+		if (mp_unlikely(c < 0xa0 || c > 0xbf))
+			mp_unreachable();
+		return c & 0x1f;
+	}
+}
+
+MP_IMPL const char *
+mp_decode_strbin(const char **data, uint32_t *len)
+{
+	assert(len != NULL);
+
+	*len = mp_decode_strbinl(data);
 	const char *str = *data;
 	*data += *len;
 	return str;
@@ -1658,6 +1825,143 @@ mp_decode_bool(const char **data)
 	default:
 		mp_unreachable();
 	}
+}
+
+MP_IMPL int
+mp_read_int32(const char **data, int32_t *ret)
+{
+	uint32_t uval;
+	const char *p = *data;
+	uint8_t c = mp_load_u8(&p);
+	switch (c) {
+	case 0xd0:
+		*ret = (int8_t) mp_load_u8(&p);
+		break;
+	case 0xd1:
+		*ret = (int16_t) mp_load_u16(&p);
+		break;
+	case 0xd2:
+		*ret = (int32_t) mp_load_u32(&p);
+		break;
+	case 0xcc:
+		*ret = mp_load_u8(&p);
+		break;
+	case 0xcd:
+		*ret = mp_load_u16(&p);
+		break;
+	case 0xce:
+		uval = mp_load_u32(&p);
+		if (mp_unlikely(uval > INT32_MAX))
+			return -1;
+		*ret = uval;
+		break;
+	default:
+		if (mp_unlikely(c < 0xe0 && c > 0x7f))
+			return -1;
+		*ret = (int8_t) c;
+		break;
+	}
+	*data = p;
+	return 0;
+}
+
+MP_IMPL int
+mp_read_int64(const char **data, int64_t *ret)
+{
+	uint64_t uval;
+	const char *p = *data;
+	uint8_t c = mp_load_u8(&p);
+	switch (c) {
+	case 0xd0:
+		*ret = (int8_t) mp_load_u8(&p);
+		break;
+	case 0xd1:
+		*ret = (int16_t) mp_load_u16(&p);
+		break;
+	case 0xd2:
+		*ret = (int32_t) mp_load_u32(&p);
+		break;
+	case 0xd3:
+		*ret = (int64_t) mp_load_u64(&p);
+		break;
+	case 0xcc:
+		*ret = mp_load_u8(&p);
+		break;
+	case 0xcd:
+		*ret = mp_load_u16(&p);
+		break;
+	case 0xce:
+		*ret = mp_load_u32(&p);
+		break;
+	case 0xcf:
+		uval = mp_load_u64(&p);
+		if (uval > INT64_MAX)
+			return -1;
+		*ret = uval;
+		break;
+	default:
+		if (mp_unlikely(c < 0xe0 && c > 0x7f))
+			return -1;
+		*ret = (int8_t) c;
+		break;
+	}
+	*data = p;
+	return 0;
+}
+
+MP_IMPL int
+mp_read_double(const char **data, double *ret)
+{
+	int64_t ival;
+	uint64_t uval;
+	double val;
+	const char *p = *data;
+	uint8_t c = mp_load_u8(&p);
+	switch (c) {
+	case 0xd0:
+		*ret = (int8_t) mp_load_u8(&p);
+		break;
+	case 0xd1:
+		*ret = (int16_t) mp_load_u16(&p);
+		break;
+	case 0xd2:
+		*ret = (int32_t) mp_load_u32(&p);
+		break;
+	case 0xd3:
+		val = ival = (int64_t) mp_load_u64(&p);
+		if ((int64_t)val != ival)
+			return -1;
+		*ret = val;
+		break;
+	case 0xcc:
+		*ret = mp_load_u8(&p);
+		break;
+	case 0xcd:
+		*ret = mp_load_u16(&p);
+		break;
+	case 0xce:
+		*ret = mp_load_u32(&p);
+		break;
+	case 0xcf:
+		val = uval = mp_load_u64(&p);
+		if ((uint64_t)val != uval)
+			return -1;
+		*ret = val;
+		break;
+	case 0xca:
+		*ret = mp_load_float(&p);
+		break;
+	case 0xcb:
+		*ret = mp_load_double(&p);
+		break;
+	default:
+		if (mp_unlikely(c < 0xe0 && c > 0x7f))
+			return -1;
+		*ret = (int8_t) c;
+		break;
+	}
+	*data = p;
+	return 0;
 }
 
 /** See mp_parser_hint */
@@ -1830,7 +2134,7 @@ mp_check(const char **data, const char *end)
 		case MP_HINT_MAP_16:
 			/* MP_MAP (16) */
 			if (mp_unlikely(*data + sizeof(uint16_t) > end))
-				return false;
+				return 1;
 			k += 2 * mp_load_u16(data);
 			break;
 		case MP_HINT_MAP_32:
@@ -1874,819 +2178,6 @@ mp_check(const char **data, const char *end)
 	return 0;
 }
 
-MP_IMPL size_t
-mp_vformat(char *data, size_t data_size, const char *format, va_list vl)
-{
-	size_t result = 0;
-	const char *f = NULL;
-
-	for (f = format; *f; f++) {
-		if (f[0] == '[') {
-			uint32_t size = 0;
-			int level = 1;
-			const char *e = NULL;
-
-			for (e = f + 1; level && *e; e++) {
-				if (*e == '[' || *e == '{') {
-					if (level == 1)
-						size++;
-					level++;
-				} else if (*e == ']' || *e == '}') {
-					level--;
-					/* opened '[' must be closed by ']' */
-					assert(level || *e == ']');
-				} else if (*e == '%') {
-					if (e[1] == '%')
-						e++;
-					else if (level == 1)
-						size++;
-				} else if (*e == 'N' && e[1] == 'I'
-					   && e[2] == 'L' && level == 1) {
-					size++;
-				}
-			}
-			/* opened '[' must be closed */
-			assert(level == 0);
-			result += mp_sizeof_array(size);
-			if (result <= data_size)
-				data = mp_encode_array(data, size);
-		} else if (f[0] == '{') {
-			uint32_t count = 0;
-			int level = 1;
-			const char *e = NULL;
-
-			for (e = f + 1; level && *e; e++) {
-				if (*e == '[' || *e == '{') {
-					if (level == 1)
-						count++;
-					level++;
-				} else if (*e == ']' || *e == '}') {
-					level--;
-					/* opened '{' must be closed by '}' */
-					assert(level || *e == '}');
-				} else if (*e == '%') {
-					if (e[1] == '%')
-						e++;
-					else if (level == 1)
-						count++;
-				} else if (*e == 'N' && e[1] == 'I'
-					   && e[2] == 'L' && level == 1) {
-					count++;
-				}
-			}
-			/* opened '{' must be closed */
-			assert(level == 0);
-			/* since map is a pair list, count must be even */
-			assert(count % 2 == 0);
-			uint32_t size = count / 2;
-			result += mp_sizeof_map(size);
-			if (result <= data_size)
-				data = mp_encode_map(data, size);
-		} else if (f[0] == '%') {
-			f++;
-			assert(f[0]);
-			int64_t int_value = 0;
-			int int_status = 0; /* 1 - signed, 2 - unsigned */
-
-			if (f[0] == 'd' || f[0] == 'i') {
-				int_value = va_arg(vl, int);
-				int_status = 1;
-			} else if (f[0] == 'u') {
-				int_value = va_arg(vl, unsigned int);
-				int_status = 2;
-			} else if (f[0] == 's') {
-				const char *str = va_arg(vl, const char *);
-				uint32_t len = (uint32_t)strlen(str);
-				result += mp_sizeof_str(len);
-				if (result <= data_size)
-					data = mp_encode_str(data, str, len);
-			} else if (f[0] == '.' && f[1] == '*' && f[2] == 's') {
-				uint32_t len = va_arg(vl, uint32_t);
-				const char *str = va_arg(vl, const char *);
-				result += mp_sizeof_str(len);
-				if (result <= data_size)
-					data = mp_encode_str(data, str, len);
-				f += 2;
-			} else if(f[0] == 'f') {
-				float v = (float)va_arg(vl, double);
-				result += mp_sizeof_float(v);
-				if (result <= data_size)
-					data = mp_encode_float(data, v);
-			} else if(f[0] == 'l' && f[1] == 'f') {
-				double v = va_arg(vl, double);
-				result += mp_sizeof_double(v);
-				if (result <= data_size)
-					data = mp_encode_double(data, v);
-				f++;
-			} else if(f[0] == 'b') {
-				bool v = (bool)va_arg(vl, int);
-				result += mp_sizeof_bool(v);
-				if (result <= data_size)
-					data = mp_encode_bool(data, v);
-			} else if (f[0] == 'l'
-				   && (f[1] == 'd' || f[1] == 'i')) {
-				int_value = va_arg(vl, long);
-				int_status = 1;
-				f++;
-			} else if (f[0] == 'l' && f[1] == 'u') {
-				int_value = va_arg(vl, unsigned long);
-				int_status = 2;
-				f++;
-			} else if (f[0] == 'l' && f[1] == 'l'
-				   && (f[2] == 'd' || f[2] == 'i')) {
-				int_value = va_arg(vl, long long);
-				int_status = 1;
-				f += 2;
-			} else if (f[0] == 'l' && f[1] == 'l' && f[2] == 'u') {
-				int_value = va_arg(vl, unsigned long long);
-				int_status = 2;
-				f += 2;
-			} else if (f[0] == 'h'
-				   && (f[1] == 'd' || f[1] == 'i')) {
-				int_value = va_arg(vl, int);
-				int_status = 1;
-				f++;
-			} else if (f[0] == 'h' && f[1] == 'u') {
-				int_value = va_arg(vl, unsigned int);
-				int_status = 2;
-				f++;
-			} else if (f[0] == 'h' && f[1] == 'h'
-				   && (f[2] == 'd' || f[2] == 'i')) {
-				int_value = va_arg(vl, int);
-				int_status = 1;
-				f += 2;
-			} else if (f[0] == 'h' && f[1] == 'h' && f[2] == 'u') {
-				int_value = va_arg(vl, unsigned int);
-				int_status = 2;
-				f += 2;
-			} else if (f[0] != '%') {
-				/* unexpected format specifier */
-				assert(false);
-			}
-
-			if (int_status == 1 && int_value < 0) {
-				result += mp_sizeof_int(int_value);
-				if (result <= data_size)
-					data = mp_encode_int(data, int_value);
-			} else if(int_status) {
-				result += mp_sizeof_uint(int_value);
-				if (result <= data_size)
-					data = mp_encode_uint(data, int_value);
-			}
-		} else if (f[0] == 'N' && f[1] == 'I' && f[2] == 'L') {
-			result += mp_sizeof_nil();
-			if (result <= data_size)
-				data = mp_encode_nil(data);
-			f += 2;
-		}
-	}
-	return result;
-}
-
-MP_IMPL size_t
-mp_format(char *data, size_t data_size, const char *format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	size_t res = mp_vformat(data, data_size, format, args);
-	va_end(args);
-	return res;
-}
-
-/** \endcond */
-
-/*
- * }}}
- */
-
-/*
- * {{{ Implementation: parser tables
- */
-
-/** \cond 0 */
-
-#if defined(MP_SOURCE)
-
-/**
- * This lookup table used by mp_sizeof() to determine enum mp_type by the first
- * byte of MsgPack element.
- */
-const enum mp_type mp_type_hint[256]= {
-	/* {{{ MP_UINT (fixed) */
-	/* 0x00 */ MP_UINT,
-	/* 0x01 */ MP_UINT,
-	/* 0x02 */ MP_UINT,
-	/* 0x03 */ MP_UINT,
-	/* 0x04 */ MP_UINT,
-	/* 0x05 */ MP_UINT,
-	/* 0x06 */ MP_UINT,
-	/* 0x07 */ MP_UINT,
-	/* 0x08 */ MP_UINT,
-	/* 0x09 */ MP_UINT,
-	/* 0x0a */ MP_UINT,
-	/* 0x0b */ MP_UINT,
-	/* 0x0c */ MP_UINT,
-	/* 0x0d */ MP_UINT,
-	/* 0x0e */ MP_UINT,
-	/* 0x0f */ MP_UINT,
-	/* 0x10 */ MP_UINT,
-	/* 0x11 */ MP_UINT,
-	/* 0x12 */ MP_UINT,
-	/* 0x13 */ MP_UINT,
-	/* 0x14 */ MP_UINT,
-	/* 0x15 */ MP_UINT,
-	/* 0x16 */ MP_UINT,
-	/* 0x17 */ MP_UINT,
-	/* 0x18 */ MP_UINT,
-	/* 0x19 */ MP_UINT,
-	/* 0x1a */ MP_UINT,
-	/* 0x1b */ MP_UINT,
-	/* 0x1c */ MP_UINT,
-	/* 0x1d */ MP_UINT,
-	/* 0x1e */ MP_UINT,
-	/* 0x1f */ MP_UINT,
-	/* 0x20 */ MP_UINT,
-	/* 0x21 */ MP_UINT,
-	/* 0x22 */ MP_UINT,
-	/* 0x23 */ MP_UINT,
-	/* 0x24 */ MP_UINT,
-	/* 0x25 */ MP_UINT,
-	/* 0x26 */ MP_UINT,
-	/* 0x27 */ MP_UINT,
-	/* 0x28 */ MP_UINT,
-	/* 0x29 */ MP_UINT,
-	/* 0x2a */ MP_UINT,
-	/* 0x2b */ MP_UINT,
-	/* 0x2c */ MP_UINT,
-	/* 0x2d */ MP_UINT,
-	/* 0x2e */ MP_UINT,
-	/* 0x2f */ MP_UINT,
-	/* 0x30 */ MP_UINT,
-	/* 0x31 */ MP_UINT,
-	/* 0x32 */ MP_UINT,
-	/* 0x33 */ MP_UINT,
-	/* 0x34 */ MP_UINT,
-	/* 0x35 */ MP_UINT,
-	/* 0x36 */ MP_UINT,
-	/* 0x37 */ MP_UINT,
-	/* 0x38 */ MP_UINT,
-	/* 0x39 */ MP_UINT,
-	/* 0x3a */ MP_UINT,
-	/* 0x3b */ MP_UINT,
-	/* 0x3c */ MP_UINT,
-	/* 0x3d */ MP_UINT,
-	/* 0x3e */ MP_UINT,
-	/* 0x3f */ MP_UINT,
-	/* 0x40 */ MP_UINT,
-	/* 0x41 */ MP_UINT,
-	/* 0x42 */ MP_UINT,
-	/* 0x43 */ MP_UINT,
-	/* 0x44 */ MP_UINT,
-	/* 0x45 */ MP_UINT,
-	/* 0x46 */ MP_UINT,
-	/* 0x47 */ MP_UINT,
-	/* 0x48 */ MP_UINT,
-	/* 0x49 */ MP_UINT,
-	/* 0x4a */ MP_UINT,
-	/* 0x4b */ MP_UINT,
-	/* 0x4c */ MP_UINT,
-	/* 0x4d */ MP_UINT,
-	/* 0x4e */ MP_UINT,
-	/* 0x4f */ MP_UINT,
-	/* 0x50 */ MP_UINT,
-	/* 0x51 */ MP_UINT,
-	/* 0x52 */ MP_UINT,
-	/* 0x53 */ MP_UINT,
-	/* 0x54 */ MP_UINT,
-	/* 0x55 */ MP_UINT,
-	/* 0x56 */ MP_UINT,
-	/* 0x57 */ MP_UINT,
-	/* 0x58 */ MP_UINT,
-	/* 0x59 */ MP_UINT,
-	/* 0x5a */ MP_UINT,
-	/* 0x5b */ MP_UINT,
-	/* 0x5c */ MP_UINT,
-	/* 0x5d */ MP_UINT,
-	/* 0x5e */ MP_UINT,
-	/* 0x5f */ MP_UINT,
-	/* 0x60 */ MP_UINT,
-	/* 0x61 */ MP_UINT,
-	/* 0x62 */ MP_UINT,
-	/* 0x63 */ MP_UINT,
-	/* 0x64 */ MP_UINT,
-	/* 0x65 */ MP_UINT,
-	/* 0x66 */ MP_UINT,
-	/* 0x67 */ MP_UINT,
-	/* 0x68 */ MP_UINT,
-	/* 0x69 */ MP_UINT,
-	/* 0x6a */ MP_UINT,
-	/* 0x6b */ MP_UINT,
-	/* 0x6c */ MP_UINT,
-	/* 0x6d */ MP_UINT,
-	/* 0x6e */ MP_UINT,
-	/* 0x6f */ MP_UINT,
-	/* 0x70 */ MP_UINT,
-	/* 0x71 */ MP_UINT,
-	/* 0x72 */ MP_UINT,
-	/* 0x73 */ MP_UINT,
-	/* 0x74 */ MP_UINT,
-	/* 0x75 */ MP_UINT,
-	/* 0x76 */ MP_UINT,
-	/* 0x77 */ MP_UINT,
-	/* 0x78 */ MP_UINT,
-	/* 0x79 */ MP_UINT,
-	/* 0x7a */ MP_UINT,
-	/* 0x7b */ MP_UINT,
-	/* 0x7c */ MP_UINT,
-	/* 0x7d */ MP_UINT,
-	/* 0x7e */ MP_UINT,
-	/* 0x7f */ MP_UINT,
-	/* }}} */
-
-	/* {{{ MP_MAP (fixed) */
-	/* 0x80 */ MP_MAP,
-	/* 0x81 */ MP_MAP,
-	/* 0x82 */ MP_MAP,
-	/* 0x83 */ MP_MAP,
-	/* 0x84 */ MP_MAP,
-	/* 0x85 */ MP_MAP,
-	/* 0x86 */ MP_MAP,
-	/* 0x87 */ MP_MAP,
-	/* 0x88 */ MP_MAP,
-	/* 0x89 */ MP_MAP,
-	/* 0x8a */ MP_MAP,
-	/* 0x8b */ MP_MAP,
-	/* 0x8c */ MP_MAP,
-	/* 0x8d */ MP_MAP,
-	/* 0x8e */ MP_MAP,
-	/* 0x8f */ MP_MAP,
-	/* }}} */
-
-	/* {{{ MP_ARRAY (fixed) */
-	/* 0x90 */ MP_ARRAY,
-	/* 0x91 */ MP_ARRAY,
-	/* 0x92 */ MP_ARRAY,
-	/* 0x93 */ MP_ARRAY,
-	/* 0x94 */ MP_ARRAY,
-	/* 0x95 */ MP_ARRAY,
-	/* 0x96 */ MP_ARRAY,
-	/* 0x97 */ MP_ARRAY,
-	/* 0x98 */ MP_ARRAY,
-	/* 0x99 */ MP_ARRAY,
-	/* 0x9a */ MP_ARRAY,
-	/* 0x9b */ MP_ARRAY,
-	/* 0x9c */ MP_ARRAY,
-	/* 0x9d */ MP_ARRAY,
-	/* 0x9e */ MP_ARRAY,
-	/* 0x9f */ MP_ARRAY,
-	/* }}} */
-
-	/* {{{ MP_STR (fixed) */
-	/* 0xa0 */ MP_STR,
-	/* 0xa1 */ MP_STR,
-	/* 0xa2 */ MP_STR,
-	/* 0xa3 */ MP_STR,
-	/* 0xa4 */ MP_STR,
-	/* 0xa5 */ MP_STR,
-	/* 0xa6 */ MP_STR,
-	/* 0xa7 */ MP_STR,
-	/* 0xa8 */ MP_STR,
-	/* 0xa9 */ MP_STR,
-	/* 0xaa */ MP_STR,
-	/* 0xab */ MP_STR,
-	/* 0xac */ MP_STR,
-	/* 0xad */ MP_STR,
-	/* 0xae */ MP_STR,
-	/* 0xaf */ MP_STR,
-	/* 0xb0 */ MP_STR,
-	/* 0xb1 */ MP_STR,
-	/* 0xb2 */ MP_STR,
-	/* 0xb3 */ MP_STR,
-	/* 0xb4 */ MP_STR,
-	/* 0xb5 */ MP_STR,
-	/* 0xb6 */ MP_STR,
-	/* 0xb7 */ MP_STR,
-	/* 0xb8 */ MP_STR,
-	/* 0xb9 */ MP_STR,
-	/* 0xba */ MP_STR,
-	/* 0xbb */ MP_STR,
-	/* 0xbc */ MP_STR,
-	/* 0xbd */ MP_STR,
-	/* 0xbe */ MP_STR,
-	/* 0xbf */ MP_STR,
-	/* }}} */
-
-	/* {{{ MP_NIL, MP_BOOL */
-	/* 0xc0 */ MP_NIL,
-	/* 0xc1 */ MP_EXT, /* never used */
-	/* 0xc2 */ MP_BOOL,
-	/* 0xc3 */ MP_BOOL,
-	/* }}} */
-
-	/* {{{ MP_BIN */
-	/* 0xc4 */ MP_BIN,   /* MP_BIN(8)  */
-	/* 0xc5 */ MP_BIN,   /* MP_BIN(16) */
-	/* 0xc6 */ MP_BIN,   /* MP_BIN(32) */
-	/* }}} */
-
-	/* {{{ MP_EXT */
-	/* 0xc7 */ MP_EXT,
-	/* 0xc8 */ MP_EXT,
-	/* 0xc9 */ MP_EXT,
-	/* }}} */
-
-	/* {{{ MP_FLOAT, MP_DOUBLE */
-	/* 0xca */ MP_FLOAT,
-	/* 0xcb */ MP_DOUBLE,
-	/* }}} */
-
-	/* {{{ MP_UINT */
-	/* 0xcc */ MP_UINT,
-	/* 0xcd */ MP_UINT,
-	/* 0xce */ MP_UINT,
-	/* 0xcf */ MP_UINT,
-	/* }}} */
-
-	/* {{{ MP_INT */
-	/* 0xd0 */ MP_INT,   /* MP_INT (8)  */
-	/* 0xd1 */ MP_INT,   /* MP_INT (16) */
-	/* 0xd2 */ MP_INT,   /* MP_INT (32) */
-	/* 0xd3 */ MP_INT,   /* MP_INT (64) */
-	/* }}} */
-
-	/* {{{ MP_EXT */
-	/* 0xd4 */ MP_EXT,   /* MP_INT (8)    */
-	/* 0xd5 */ MP_EXT,   /* MP_INT (16)   */
-	/* 0xd6 */ MP_EXT,   /* MP_INT (32)   */
-	/* 0xd7 */ MP_EXT,   /* MP_INT (64)   */
-	/* 0xd8 */ MP_EXT,   /* MP_INT (127)  */
-	/* }}} */
-
-	/* {{{ MP_STR */
-	/* 0xd9 */ MP_STR,   /* MP_STR(8)  */
-	/* 0xda */ MP_STR,   /* MP_STR(16) */
-	/* 0xdb */ MP_STR,   /* MP_STR(32) */
-	/* }}} */
-
-	/* {{{ MP_ARRAY */
-	/* 0xdc */ MP_ARRAY, /* MP_ARRAY(16)  */
-	/* 0xdd */ MP_ARRAY, /* MP_ARRAY(32)  */
-	/* }}} */
-
-	/* {{{ MP_MAP */
-	/* 0xde */ MP_MAP,   /* MP_MAP (16) */
-	/* 0xdf */ MP_MAP,   /* MP_MAP (32) */
-	/* }}} */
-
-	/* {{{ MP_INT */
-	/* 0xe0 */ MP_INT,
-	/* 0xe1 */ MP_INT,
-	/* 0xe2 */ MP_INT,
-	/* 0xe3 */ MP_INT,
-	/* 0xe4 */ MP_INT,
-	/* 0xe5 */ MP_INT,
-	/* 0xe6 */ MP_INT,
-	/* 0xe7 */ MP_INT,
-	/* 0xe8 */ MP_INT,
-	/* 0xe9 */ MP_INT,
-	/* 0xea */ MP_INT,
-	/* 0xeb */ MP_INT,
-	/* 0xec */ MP_INT,
-	/* 0xed */ MP_INT,
-	/* 0xee */ MP_INT,
-	/* 0xef */ MP_INT,
-	/* 0xf0 */ MP_INT,
-	/* 0xf1 */ MP_INT,
-	/* 0xf2 */ MP_INT,
-	/* 0xf3 */ MP_INT,
-	/* 0xf4 */ MP_INT,
-	/* 0xf5 */ MP_INT,
-	/* 0xf6 */ MP_INT,
-	/* 0xf7 */ MP_INT,
-	/* 0xf8 */ MP_INT,
-	/* 0xf9 */ MP_INT,
-	/* 0xfa */ MP_INT,
-	/* 0xfb */ MP_INT,
-	/* 0xfc */ MP_INT,
-	/* 0xfd */ MP_INT,
-	/* 0xfe */ MP_INT,
-	/* 0xff */ MP_INT
-	/* }}} */
-};
-
-/**
- * This lookup table used by mp_next() and mp_check() to determine
- * size of MsgPack element by its first byte.
- * A positive value contains size of the element (excluding the first byte).
- * A negative value means the element is compound (e.g. array or map)
- * of size (-n).
- * MP_HINT_* values used for special cases handled by switch() statement.
- */
-const int8_t mp_parser_hint[256] = {
-	/* {{{ MP_UINT(fixed) **/
-	/* 0x00 */ 0,
-	/* 0x01 */ 0,
-	/* 0x02 */ 0,
-	/* 0x03 */ 0,
-	/* 0x04 */ 0,
-	/* 0x05 */ 0,
-	/* 0x06 */ 0,
-	/* 0x07 */ 0,
-	/* 0x08 */ 0,
-	/* 0x09 */ 0,
-	/* 0x0a */ 0,
-	/* 0x0b */ 0,
-	/* 0x0c */ 0,
-	/* 0x0d */ 0,
-	/* 0x0e */ 0,
-	/* 0x0f */ 0,
-	/* 0x10 */ 0,
-	/* 0x11 */ 0,
-	/* 0x12 */ 0,
-	/* 0x13 */ 0,
-	/* 0x14 */ 0,
-	/* 0x15 */ 0,
-	/* 0x16 */ 0,
-	/* 0x17 */ 0,
-	/* 0x18 */ 0,
-	/* 0x19 */ 0,
-	/* 0x1a */ 0,
-	/* 0x1b */ 0,
-	/* 0x1c */ 0,
-	/* 0x1d */ 0,
-	/* 0x1e */ 0,
-	/* 0x1f */ 0,
-	/* 0x20 */ 0,
-	/* 0x21 */ 0,
-	/* 0x22 */ 0,
-	/* 0x23 */ 0,
-	/* 0x24 */ 0,
-	/* 0x25 */ 0,
-	/* 0x26 */ 0,
-	/* 0x27 */ 0,
-	/* 0x28 */ 0,
-	/* 0x29 */ 0,
-	/* 0x2a */ 0,
-	/* 0x2b */ 0,
-	/* 0x2c */ 0,
-	/* 0x2d */ 0,
-	/* 0x2e */ 0,
-	/* 0x2f */ 0,
-	/* 0x30 */ 0,
-	/* 0x31 */ 0,
-	/* 0x32 */ 0,
-	/* 0x33 */ 0,
-	/* 0x34 */ 0,
-	/* 0x35 */ 0,
-	/* 0x36 */ 0,
-	/* 0x37 */ 0,
-	/* 0x38 */ 0,
-	/* 0x39 */ 0,
-	/* 0x3a */ 0,
-	/* 0x3b */ 0,
-	/* 0x3c */ 0,
-	/* 0x3d */ 0,
-	/* 0x3e */ 0,
-	/* 0x3f */ 0,
-	/* 0x40 */ 0,
-	/* 0x41 */ 0,
-	/* 0x42 */ 0,
-	/* 0x43 */ 0,
-	/* 0x44 */ 0,
-	/* 0x45 */ 0,
-	/* 0x46 */ 0,
-	/* 0x47 */ 0,
-	/* 0x48 */ 0,
-	/* 0x49 */ 0,
-	/* 0x4a */ 0,
-	/* 0x4b */ 0,
-	/* 0x4c */ 0,
-	/* 0x4d */ 0,
-	/* 0x4e */ 0,
-	/* 0x4f */ 0,
-	/* 0x50 */ 0,
-	/* 0x51 */ 0,
-	/* 0x52 */ 0,
-	/* 0x53 */ 0,
-	/* 0x54 */ 0,
-	/* 0x55 */ 0,
-	/* 0x56 */ 0,
-	/* 0x57 */ 0,
-	/* 0x58 */ 0,
-	/* 0x59 */ 0,
-	/* 0x5a */ 0,
-	/* 0x5b */ 0,
-	/* 0x5c */ 0,
-	/* 0x5d */ 0,
-	/* 0x5e */ 0,
-	/* 0x5f */ 0,
-	/* 0x60 */ 0,
-	/* 0x61 */ 0,
-	/* 0x62 */ 0,
-	/* 0x63 */ 0,
-	/* 0x64 */ 0,
-	/* 0x65 */ 0,
-	/* 0x66 */ 0,
-	/* 0x67 */ 0,
-	/* 0x68 */ 0,
-	/* 0x69 */ 0,
-	/* 0x6a */ 0,
-	/* 0x6b */ 0,
-	/* 0x6c */ 0,
-	/* 0x6d */ 0,
-	/* 0x6e */ 0,
-	/* 0x6f */ 0,
-	/* 0x70 */ 0,
-	/* 0x71 */ 0,
-	/* 0x72 */ 0,
-	/* 0x73 */ 0,
-	/* 0x74 */ 0,
-	/* 0x75 */ 0,
-	/* 0x76 */ 0,
-	/* 0x77 */ 0,
-	/* 0x78 */ 0,
-	/* 0x79 */ 0,
-	/* 0x7a */ 0,
-	/* 0x7b */ 0,
-	/* 0x7c */ 0,
-	/* 0x7d */ 0,
-	/* 0x7e */ 0,
-	/* 0x7f */ 0,
-	/* }}} */
-
-	/* {{{ MP_MAP (fixed) */
-	/* 0x80 */  0, /* empty map - just skip one byte */
-	/* 0x81 */ -2, /* 2 elements follow */
-	/* 0x82 */ -4,
-	/* 0x83 */ -6,
-	/* 0x84 */ -8,
-	/* 0x85 */ -10,
-	/* 0x86 */ -12,
-	/* 0x87 */ -14,
-	/* 0x88 */ -16,
-	/* 0x89 */ -18,
-	/* 0x8a */ -20,
-	/* 0x8b */ -22,
-	/* 0x8c */ -24,
-	/* 0x8d */ -26,
-	/* 0x8e */ -28,
-	/* 0x8f */ -30,
-	/* }}} */
-
-	/* {{{ MP_ARRAY (fixed) */
-	/* 0x90 */  0,  /* empty array - just skip one byte */
-	/* 0x91 */ -1,  /* 1 element follows */
-	/* 0x92 */ -2,
-	/* 0x93 */ -3,
-	/* 0x94 */ -4,
-	/* 0x95 */ -5,
-	/* 0x96 */ -6,
-	/* 0x97 */ -7,
-	/* 0x98 */ -8,
-	/* 0x99 */ -9,
-	/* 0x9a */ -10,
-	/* 0x9b */ -11,
-	/* 0x9c */ -12,
-	/* 0x9d */ -13,
-	/* 0x9e */ -14,
-	/* 0x9f */ -15,
-	/* }}} */
-
-	/* {{{ MP_STR (fixed) */
-	/* 0xa0 */ 0,
-	/* 0xa1 */ 1,
-	/* 0xa2 */ 2,
-	/* 0xa3 */ 3,
-	/* 0xa4 */ 4,
-	/* 0xa5 */ 5,
-	/* 0xa6 */ 6,
-	/* 0xa7 */ 7,
-	/* 0xa8 */ 8,
-	/* 0xa9 */ 9,
-	/* 0xaa */ 10,
-	/* 0xab */ 11,
-	/* 0xac */ 12,
-	/* 0xad */ 13,
-	/* 0xae */ 14,
-	/* 0xaf */ 15,
-	/* 0xb0 */ 16,
-	/* 0xb1 */ 17,
-	/* 0xb2 */ 18,
-	/* 0xb3 */ 19,
-	/* 0xb4 */ 20,
-	/* 0xb5 */ 21,
-	/* 0xb6 */ 22,
-	/* 0xb7 */ 23,
-	/* 0xb8 */ 24,
-	/* 0xb9 */ 25,
-	/* 0xba */ 26,
-	/* 0xbb */ 27,
-	/* 0xbc */ 28,
-	/* 0xbd */ 29,
-	/* 0xbe */ 30,
-	/* 0xbf */ 31,
-	/* }}} */
-
-	/* {{{ MP_NIL, MP_BOOL */
-	/* 0xc0 */ 0, /* MP_NIL */
-	/* 0xc1 */ 0, /* never used */
-	/* 0xc2 */ 0, /* MP_BOOL*/
-	/* 0xc3 */ 0, /* MP_BOOL*/
-	/* }}} */
-
-	/* {{{ MP_BIN */
-	/* 0xc4 */ MP_HINT_STR_8,  /* MP_BIN (8)  */
-	/* 0xc5 */ MP_HINT_STR_16, /* MP_BIN (16) */
-	/* 0xc6 */ MP_HINT_STR_32, /* MP_BIN (32) */
-	/* }}} */
-
-	/* {{{ MP_EXT */
-	/* 0xc7 */ MP_HINT_EXT_8,    /* MP_EXT (8)  */
-	/* 0xc8 */ MP_HINT_EXT_16,   /* MP_EXT (16) */
-	/* 0xc9 */ MP_HINT_EXT_32,   /* MP_EXT (32) */
-	/* }}} */
-
-	/* {{{ MP_FLOAT, MP_DOUBLE */
-	/* 0xca */ sizeof(float),    /* MP_FLOAT */
-	/* 0xcb */ sizeof(double),   /* MP_DOUBLE */
-	/* }}} */
-
-	/* {{{ MP_UINT */
-	/* 0xcc */ sizeof(uint8_t),  /* MP_UINT (8)  */
-	/* 0xcd */ sizeof(uint16_t), /* MP_UINT (16) */
-	/* 0xce */ sizeof(uint32_t), /* MP_UINT (32) */
-	/* 0xcf */ sizeof(uint64_t), /* MP_UINT (64) */
-	/* }}} */
-
-	/* {{{ MP_INT */
-	/* 0xd0 */ sizeof(uint8_t),  /* MP_INT (8)  */
-	/* 0xd1 */ sizeof(uint16_t), /* MP_INT (8)  */
-	/* 0xd2 */ sizeof(uint32_t), /* MP_INT (8)  */
-	/* 0xd3 */ sizeof(uint64_t), /* MP_INT (8)  */
-	/* }}} */
-
-	/* {{{ MP_EXT (fixext) */
-	/* 0xd4 */ 2,  /* MP_EXT (fixext 8)   */
-	/* 0xd5 */ 3,  /* MP_EXT (fixext 16)  */
-	/* 0xd6 */ 5,  /* MP_EXT (fixext 32)  */
-	/* 0xd7 */ 9,  /* MP_EXT (fixext 64)  */
-	/* 0xd8 */ 17, /* MP_EXT (fixext 128) */
-	/* }}} */
-
-	/* {{{ MP_STR */
-	/* 0xd9 */ MP_HINT_STR_8,      /* MP_STR (8) */
-	/* 0xda */ MP_HINT_STR_16,     /* MP_STR (16) */
-	/* 0xdb */ MP_HINT_STR_32,     /* MP_STR (32) */
-	/* }}} */
-
-	/* {{{ MP_ARRAY */
-	/* 0xdc */ MP_HINT_ARRAY_16,   /* MP_ARRAY (16) */
-	/* 0xdd */ MP_HINT_ARRAY_32,   /* MP_ARRAY (32) */
-	/* }}} */
-
-	/* {{{ MP_MAP */
-	/* 0xde */ MP_HINT_MAP_16,     /* MP_MAP (16) */
-	/* 0xdf */ MP_HINT_MAP_32,     /* MP_MAP (32) */
-	/* }}} */
-
-	/* {{{ MP_INT (fixed) */
-	/* 0xe0 */ 0,
-	/* 0xe1 */ 0,
-	/* 0xe2 */ 0,
-	/* 0xe3 */ 0,
-	/* 0xe4 */ 0,
-	/* 0xe5 */ 0,
-	/* 0xe6 */ 0,
-	/* 0xe7 */ 0,
-	/* 0xe8 */ 0,
-	/* 0xe9 */ 0,
-	/* 0xea */ 0,
-	/* 0xeb */ 0,
-	/* 0xec */ 0,
-	/* 0xed */ 0,
-	/* 0xee */ 0,
-	/* 0xef */ 0,
-	/* 0xf0 */ 0,
-	/* 0xf1 */ 0,
-	/* 0xf2 */ 0,
-	/* 0xf3 */ 0,
-	/* 0xf4 */ 0,
-	/* 0xf5 */ 0,
-	/* 0xf6 */ 0,
-	/* 0xf7 */ 0,
-	/* 0xf8 */ 0,
-	/* 0xf9 */ 0,
-	/* 0xfa */ 0,
-	/* 0xfb */ 0,
-	/* 0xfc */ 0,
-	/* 0xfd */ 0,
-	/* 0xfe */ 0,
-	/* 0xff */ 0
-	/* }}} */
-};
-
-#endif /* defined(MP_SOURCE) */
-
 /** \endcond */
 
 /*
@@ -2697,8 +2188,7 @@ const int8_t mp_parser_hint[256] = {
 } /* extern "C" */
 #endif /* defined(__cplusplus) */
 
-#undef MP_LOAD_STORE
-#undef MP_SOURCE
+#undef MP_LIBRARY
 #undef MP_PROTO
 #undef MP_IMPL
 #undef MP_ALWAYSINLINE

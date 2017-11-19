@@ -9,6 +9,7 @@ install_manifest.txt
 *.dylib
 .*.swp
 
+output
 test/tarantool-*
 test/test
 *.xlog
@@ -16,9 +17,12 @@ test/test
 *.pid
 
 .temp
-valgrind.out
+valgrind*.out
 *.pyc
 
 doxygen
 html
 latex
+
+deploy_key
+deploy_key.pub
